@@ -128,6 +128,8 @@ compiled_prompt: |
   Budget: at most %MAX_OCCUPIED_BLOCKS% occupied blocks; at most %MAX_DSL_COMPONENTS% components; at most %MAX_DSL_INSTANCES% expanded instances; at most %MAX_DSL_OPERATIONS% operations. Prefer reusable complete components over dumping hundreds of unrelated coordinates. Return complete geometry for every required feature, not an unfinished result. Verify origin, palette references, coordinate bounds, repeated counts and roof completion before finalizing.
   Example of FOUR towers with ONE reusable tower definition, fitting 50 wide x 30 deep with ample height. This is a structural scaffold: finish it with an entrance, windows, parapets and decorative features, and adapt dimensions to the actual selection:
   {"v":2,"o":[0,0,0],"p":[{"i":"1","b":"minecraft:stone_bricks"},{"i":"2","b":"minecraft:spruce_planks"}],"c":[{"n":"tower","a":[{"k":"cyl","m":"add","i":"1","c":[4,0,4],"r":3,"h":15,"ax":"y","ho":true,"wt":1},{"k":"cyl","m":"add","i":"2","c":[4,15,4],"r":4,"h":1,"ax":"y","ho":false,"wt":1},{"k":"cyl","m":"add","i":"2","c":[4,16,4],"r":3,"h":2,"ax":"y","ho":false,"wt":1},{"k":"cyl","m":"add","i":"2","c":[4,18,4],"r":2,"h":2,"ax":"y","ho":false,"wt":1},{"k":"cyl","m":"add","i":"2","c":[4,20,4],"r":1,"h":2,"ax":"y","ho":false,"wt":1}]}],"i":[{"c":"tower","at":[2,0,2],"r":0,"mx":false,"mz":false},{"c":"tower","at":[39,0,2],"r":0,"mx":false,"mz":false},{"c":"tower","at":[2,0,19],"r":0,"mx":false,"mz":false},{"c":"tower","at":[39,0,19],"r":0,"mx":false,"mz":false}],"a":[{"k":"box","m":"add","i":"1","f":[6,0,5],"t":[43,9,6],"ho":false,"wt":1},{"k":"box","m":"add","i":"1","f":[6,0,23],"t":[43,9,24],"ho":false,"wt":1},{"k":"box","m":"add","i":"1","f":[5,0,6],"t":[6,9,23],"ho":false,"wt":1},{"k":"box","m":"add","i":"1","f":[43,0,6],"t":[44,9,23],"ho":false,"wt":1},{"k":"box","m":"cut","f":[23,0,5],"t":[26,5,6],"ho":false,"wt":1}]}
+# Preset aliases must not contain dots: Bukkit treats dots as path separators.
+# The model IDs inside each payload may still contain dots.
 models:
   codex:
     endpoint: http://127.0.0.1:8766/v1/responses
@@ -148,7 +150,7 @@ models:
     - instructions: runtime-injected
     - input: runtime-injected
     - max_output_tokens: 24576
-  gpt-5.6:
+  gpt-5-6:
     endpoint: https://api.openai.com/v1/responses
     api_key: ${ENV:OPENAI_API_KEY}
     payload:
@@ -162,7 +164,7 @@ models:
       - reasoning:
           effort: "medium"
 
-  gpt-5.6-terra:
+  gpt-5-6-terra:
     endpoint: https://api.openai.com/v1/responses
     api_key: ${ENV:OPENAI_API_KEY}
     payload:
@@ -176,7 +178,7 @@ models:
       - reasoning:
           effort: "medium"
 
-  gpt-5.6-luna:
+  gpt-5-6-luna:
     endpoint: https://api.openai.com/v1/responses
     api_key: ${ENV:OPENAI_API_KEY}
     payload:
@@ -204,7 +206,7 @@ models:
       - reasoning:
           effort: "medium"
 
-  gpt-5.4-mini:
+  gpt-5-4-mini:
     endpoint: https://api.openai.com/v1/responses
     api_key: ${ENV:OPENAI_API_KEY}
     payload:
@@ -218,7 +220,7 @@ models:
       - reasoning:
           effort: "medium"
 
-  gpt-5.4-nano:
+  gpt-5-4-nano:
     endpoint: https://api.openai.com/v1/responses
     api_key: ${ENV:OPENAI_API_KEY}
     payload:

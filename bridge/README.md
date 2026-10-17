@@ -24,3 +24,4 @@ Run `node bridge/test-bridge.mjs` for offline text/image conversion and HTTP tes
 
 Transport adapted from Angais/minedit v1.11.1 (MIT); see `LICENSE.minedit`.
 Official app-server documentation: https://learn.chatgpt.com/docs/app-server
+Preset aliases use hyphens rather than dots (for example, gpt-5-6 selects API model gpt-5.6). Bukkit interprets dots in configuration keys as nested paths, which otherwise produces a broken gpt-5 preset. Existing server configurations need the same alias changes; rebuilding alone does not replace them.
