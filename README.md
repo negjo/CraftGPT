@@ -1,5 +1,9 @@
 # CraftGPT
 
+## Local fork setup
+
+This fork includes our Codex bridge, local-model compatibility changes, preview fixes, and quality configuration. See [migrated changes and build instructions](docs/local-changes.md) and [Codex bridge setup](bridge/README.md). The bridge supports `gpt-6.1-sol` with high reasoning effort through the existing Codex login. Minecraft servers are launched separately by the operator.
+
 CraftGPT is an AI Minecraft build generator plugin for Paper servers that uses WorldEdit selections as hard build bounds.
 
 If you want a text-to-Minecraft-build workflow that can plan, critique, refine, and then place a validated result inside a selected area, this is what the plugin is built for.

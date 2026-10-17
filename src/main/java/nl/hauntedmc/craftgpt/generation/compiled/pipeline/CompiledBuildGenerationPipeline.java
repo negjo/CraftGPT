@@ -483,7 +483,7 @@ public final class CompiledBuildGenerationPipeline implements BuildGenerationPip
         int maxX = request.context().buildVolume().width() - 1;
         int maxY = request.context().buildVolume().height() - 1;
         int maxZ = request.context().buildVolume().depth() - 1;
-        return """
+        return request.systemPrompt() + "\n\n" + """
                 You are authoring or repairing a Minecraft Build Program DSL v2 response.
                 Return one complete corrected Build Program JSON object and nothing else.
                 Preserve the original semantic subject, required counts, arrangement and scale intent.

@@ -131,7 +131,7 @@
     <profile>
       <id>release</id>
       <build><plugins><plugin>
-        <artifactId>maven-source-plugin</artifactId>
+        <artifactId>mave n-source-plugin</artifactId>
         <executions><execution><id>sources</id><goals><goal>jar-no-fork</goal></goals></execution></executions>
       </plugin></plugins></build>
     </profile>
@@ -153,6 +153,35 @@
               <CRAFTGPT_PAPER_BUILD>${haunted.paper.runtime.build}</CRAFTGPT_PAPER_BUILD>
               <CRAFTGPT_PAPER_SHA256>${haunted.paper.runtime.sha256}</CRAFTGPT_PAPER_SHA256>
             </environmentVariables>
+          </configuration>
+        </execution></executions>
+      </plugin></plugins></build>
+    </profile>
+    <!-- Auto-deploy only in this Windows workspace when the sibling server exists. -->
+    <profile>
+      <id>local-server-deploy</id>
+      <activation>
+        <os><family>Windows</family></os>
+        <file><exists>${basedir}/../../paper-craftgpt/server.properties</exists></file>
+      </activation>
+      <properties><craftgpt.deploy.skip>false</craftgpt.deploy.skip></properties>
+      <build><plugins><plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>exec-maven-plugin</artifactId>
+        <executions><execution>
+          <id>deploy-local-plugin</id>
+          <phase>verify</phase>
+          <goals><goal>exec</goal></goals>
+          <configuration>
+            <skip>${craftgpt.deploy.skip}</skip>
+            <executable>powershell.exe</executable>
+            <arguments>
+              <argument>-NoProfile</argument>
+              <argument>-ExecutionPolicy</argument><argument>Bypass</argument>
+              <argument>-File</argument><argument>${project.basedir}/scripts/Deploy-LocalPlugin.ps1</argument>
+              <argument>-Artifact</argument><argument>${project.build.directory}/${project.build.finalName}.jar</argument>
+              <argument>-ServerDirectory</argument><argument>${project.basedir}/../../paper-craftgpt</argument>
+            </arguments>
           </configuration>
         </execution></executions>
       </plugin></plugins></build>

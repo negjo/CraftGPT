@@ -4,7 +4,7 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
   push:
-    branches: [main]
+    branches: [main, master]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -34,6 +34,9 @@ jobs:
           server-id: github
           server-username-env-var: PACKAGES_USER
           server-password-env-var: PACKAGES_TOKEN
+      - name: Bootstrap public platform parent
+        shell: pwsh
+        run: ./scripts/bootstrap-platform.ps1
       - run: ./mvnw -U -B -ntp verify
       - run: bash scripts/verify-artifact.sh
       - name: Upload test and coverage reports
@@ -66,6 +69,9 @@ jobs:
           server-id: github
           server-username-env-var: PACKAGES_USER
           server-password-env-var: PACKAGES_TOKEN
+      - name: Bootstrap public platform parent
+        shell: pwsh
+        run: ./scripts/bootstrap-platform.ps1
       - name: Run platform acceptance
         env:
           CRAFTGPT_ACCEPTANCE_WORK_DIRECTORY: ${{ runner.temp }}/craftgpt-acceptance
@@ -80,12 +86,20 @@ jobs:
 
   maven-policy:
     name: Shared Maven policy
-    uses: HauntedMC/HauntedPlatform/.github/workflows/maven-ci.yml@043e5ca6059b1c2453500840c41d2cedba55bbc1 # release hardening
-    with:
-      maven-command: ./mvnw -U -B -ntp validate
-    secrets:
-      PACKAGES_USER: ${{ secrets.HAUNTEDMC_PACKAGES_USERNAME || github.actor }}
-      PACKAGES_TOKEN: ${{ secrets.HAUNTEDMC_PACKAGES_TOKEN || github.token }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+      - name: Bootstrap public platform parent
+        shell: pwsh
+        run: ./scripts/bootstrap-platform.ps1
+      - run: ./mvnw -B -ntp validate
 
   tooling:
     name: ShellCheck and version tooling
@@ -108,7 +122,7 @@ jobs:
   ci-required:
     name: ci-required
     if: ${{ always() }}
-    needs: [tests, platform-acceptance, maven-policy, tooling]
+    needs: [tests, platform-acceptance, maven-policy, tooling, codex-bridge]
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -125,3 +139,12 @@ jobs:
           if failed:
               raise SystemExit(f'Validation did not pass: {failed}')
           PYTHON
+
+  codex-bridge:
+    name: Codex bridge offline checks
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: node bridge/test-bridge.mjs

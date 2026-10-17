@@ -24,7 +24,6 @@ public final class SchemaFactory {
                         pointCutSchema(),
                         pointSetAddSchema(),
                         pointSetCutSchema(),
-                        profileSchema(),
                         rawCuboidSchema()
                 )
         );
@@ -32,7 +31,7 @@ public final class SchemaFactory {
         Map<String, Object> component = objectSchema(
                 map(
                         "n", stringSchema("^[a-zA-Z0-9_-]{1,32}$", 1, 32),
-                        "a", arraySchema(operation, 0, limits.maxDslOperationsPerComponent())
+                        "a", arraySchema(operation, 0, Math.min(64, limits.maxDslOperationsPerComponent()))
                 ),
                 List.of("n", "a")
         );
@@ -54,11 +53,11 @@ public final class SchemaFactory {
         return objectSchema(
                 map(
                         "v", map("type", "integer", "enum", List.of(2)),
-                        "o", vec3Schema(),
+                        "o", map("type", "array", "minItems", 3, "maxItems", 3, "items", map("type", "integer", "enum", List.of(0))),
                         "p", arraySchema(paletteEntry, 1, 35),
-                        "c", arraySchema(component, 0, limits.maxDslComponents()),
-                        "i", arraySchema(instance, 0, limits.maxDslInstances()),
-                        "a", arraySchema(operation, 0, limits.maxDslOperations())
+                        "c", arraySchema(component, 0, Math.min(8, limits.maxDslComponents())),
+                        "i", arraySchema(instance, 0, Math.min(128, limits.maxDslInstances())),
+                        "a", arraySchema(operation, 0, Math.min(256, limits.maxDslOperations()))
                 ),
                 List.of("v", "o", "p", "c", "i", "a")
         );

@@ -74,6 +74,7 @@ public final class PreviewRenderer {
                     ResolvedPaletteEntry candidate = voxelModel.get(new IntVec3(x, y, z));
                     if (candidate != null) {
                         visible = candidate;
+                        break;
                     }
                 }
                 if (visible != null) {
@@ -207,18 +208,31 @@ public final class PreviewRenderer {
         BufferedImage image = createImage(imageSize);
         Graphics2D graphics = image.createGraphics();
         configure(graphics);
-        double tileWidth = Math.max(4.0d, imageSize / (double) ((max.x() - min.x() + 1) + (max.z() - min.z() + 1) + 4));
-        double tileHeight = tileWidth / 2.0d;
-        double blockHeight = tileWidth / 2.0d;
-        double originX = imageSize / 2.0d;
-        double originY = imageSize - tileWidth * 2.0d;
+        // Fit actual projected voxel faces, rather than leaving the model at the bottom edge.
+        double minX = Double.POSITIVE_INFINITY, maxX = Double.NEGATIVE_INFINITY;
+        double minY = Double.POSITIVE_INFINITY, maxY = Double.NEGATIVE_INFINITY;
+        for (var item : voxelModel.entries()) {
+            IntVec3 point = VoxelModel.unpack(item.getKey());
+            double px = (point.x() - min.x()) - (point.z() - min.z());
+            double py = -(point.y() - min.y()) - ((point.x() - min.x()) + (point.z() - min.z())) / 2.0d;
+            minX = Math.min(minX, px - 1); maxX = Math.max(maxX, px + 1);
+            minY = Math.min(minY, py - 1); maxY = Math.max(maxY, py + 1);
+        }
+        if (!Double.isFinite(minX)) { graphics.dispose(); return image; }
+        double available = imageSize - 32.0d;
+        double scale = available / Math.max(maxX - minX, maxY - minY);
+        double tileWidth = scale * 2.0d;
+        double tileHeight = scale;
+        double blockHeight = scale;
+        double originX = 16 + (available - (maxX - minX) * scale) / 2.0d - minX * scale;
+        double originY = 16 + (available - (maxY - minY) * scale) / 2.0d - minY * scale;
 
         voxelModel.entries().stream()
                 .sorted(Map.Entry.comparingByKey())
                 .map(entry -> new IsoCell(VoxelModel.unpack(entry.getKey()), entry.getValue()))
                 .sorted((left, right) -> {
-                    int leftDepth = left.point.x() + left.point.z() + left.point.y();
-                    int rightDepth = right.point.x() + right.point.z() + right.point.y();
+                    int leftDepth = -left.point.x() - left.point.z() + left.point.y();
+                    int rightDepth = -right.point.x() - right.point.z() + right.point.y();
                     return Integer.compare(leftDepth, rightDepth);
                 })
                 .forEach(cell -> drawIsoBlock(graphics, cell.point, cell.entry, min, originX, originY, tileWidth, tileHeight, blockHeight));

@@ -16,6 +16,7 @@ import java.util.Map;
 public final class ResponsesAiClient implements AiClient {
     @Override
     public AiResponse execute(ModelPreset preset, AiRequest request, int timeoutSeconds) {
+        if (CastleBuilder.supports(request) && isLocalEndpoint(preset.endpoint())) return CastleBuilder.generate(this, preset, request, timeoutSeconds);
         Map<String, Object> payload = ConfigManager.deepCopyMap(preset.payloadTemplate());
         payload.put("store", false);
         payload.put("instructions", request.instructions());
@@ -47,6 +48,12 @@ public final class ResponsesAiClient implements AiClient {
         return AiResponse.success(content, rawResponse);
     }
 
+    private boolean isLocalEndpoint(String endpoint) {
+        try {
+            String host = java.net.URI.create(endpoint).getHost();
+            return "127.0.0.1".equals(host) || "localhost".equalsIgnoreCase(host) || "[::1]".equals(host) || "::1".equals(host);
+        } catch (RuntimeException ignored) { return false; }
+    }
     private Object buildInput(AiRequest request) {
         if (request.images().isEmpty()) {
             return request.inputText();

@@ -36,3 +36,7 @@ java_dump.txt
 # Maven and release tooling
 .flattened-pom.xml
 .mvn/timing.properties
+
+# Local bridge state and test artifacts
+bridge/.images/
+diagnostics/
