@@ -81,7 +81,7 @@ async function main() {
     const supervisor=new RestartSupervisor(()=> {
       // Java inherits the console and receives its native Ctrl+C shutdown signal.
       // Never use child.kill() here: on Windows it can bypass Java's save hooks.
-      const child=spawn(java,['-Xms1G','-Xmx2G','-jar','paper-1.21.11-132.jar','nogui'],{cwd:root,stdio:'inherit'});
+      const child=spawn(java,['-Xms1G','-Xmx2G','-jar','paper-26.3-205.jar','nogui'],{cwd:root,stdio:'inherit'});
       return waitForExit(child);
     });
     const interrupt=()=>supervisor.requestRestart();

@@ -57,6 +57,12 @@
   </distributionManagement>
   <properties>
     <revision>1.0.2</revision>
+    <haunted.paper.version>26.3.build.205-stable</haunted.paper.version>
+    <haunted.paper.runtime.version>26.3</haunted.paper.runtime.version>
+    <haunted.paper.runtime.build>205</haunted.paper.runtime.build>
+    <haunted.paper.runtime.sha256>a0a58f532f08054ea92eb916d3edb6ed3c86429d77175317304f6e995cce9968</haunted.paper.runtime.sha256>
+    <haunted.worldedit.version>7.4.6</haunted.worldedit.version>
+    <haunted.adventure.version>5.2.0</haunted.adventure.version>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <project.build.outputTimestamp>2026-09-25T00:00:00Z</project.build.outputTimestamp>
   </properties>
@@ -170,7 +176,7 @@
         <artifactId>exec-maven-plugin</artifactId>
         <executions><execution>
           <id>deploy-local-plugin</id>
-          <phase>verify</phase>
+          <phase>package</phase>
           <goals><goal>exec</goal></goals>
           <configuration>
             <skip>${craftgpt.deploy.skip}</skip>

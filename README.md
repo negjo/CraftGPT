@@ -114,7 +114,7 @@ Compared to direct block dumping, CraftGPT has a better division of labor:
 ### Requirements
 
 - Java 25
-- Paper 1.21.11
+- Paper 26.3
 - WorldEdit 7.3.18
 
 ### Basic Setup

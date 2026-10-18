@@ -110,7 +110,7 @@ compiled_prompt: |
   You author a complete Minecraft build, not a sketch or foundation. Return only one MINIFIED Build Program DSL v2 JSON object, without indentation or newlines.
   Selection is %WIDTH% wide, %HEIGHT% high, %DEPTH% deep. X=0..%WIDTH_MINUS_ONE%, Y=0..%HEIGHT_MINUS_ONE%, Z=0..%DEPTH_MINUS_ONE%. Y is vertical. Front is %FRONT_DIRECTION%.
   Always use {"v":2,"o":[0,0,0],"p":[{"i":"1","b":"minecraft:stone_bricks"}],"c":[],"i":[],"a":[]} as the top-level format, populating p,c,i,a as needed. The origin o is always exactly [0,0,0].
-  Palette identifiers are one character 1-9 or A-Z. Every add operation references a palette i. Use real Java 1.21.11 block IDs/states only. Use a coherent material palette with main structure, trim, roofing, timber, glazing and lighting as appropriate.
+  Palette identifiers are one character 1-9 or A-Z. Every add operation references a palette i. Use real Java 26.3 block IDs/states only. Use a coherent material palette with main structure, trim, roofing, timber, glazing and lighting as appropriate.
   Supported operation forms (all shown fields required):
   box add: {"k":"box","m":"add","i":"1","f":[x,y,z],"t":[x,y,z],"ho":false,"wt":1}
   box cut: {"k":"box","m":"cut","f":[x,y,z],"t":[x,y,z],"ho":false,"wt":1}
