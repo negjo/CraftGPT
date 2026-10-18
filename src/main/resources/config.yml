@@ -140,6 +140,35 @@ models:
         effort: high
     - instructions: runtime-injected
     - input: runtime-injected
+  # Codex account models: select the alias in /craftgpt generate <alias> <description>.
+  # codex keeps GPT-6.1 Sol/high as the comparison baseline.
+  codex-astra:
+    endpoint: http://127.0.0.1:8766/v1/responses
+    api_key: codex-local
+    payload:
+    - model: gpt-6-astra
+    - reasoning:
+        effort: high
+    - instructions: runtime-injected
+    - input: runtime-injected
+  codex-astra-xhigh:
+    endpoint: http://127.0.0.1:8766/v1/responses
+    api_key: codex-local
+    payload:
+    - model: gpt-6-astra
+    - reasoning:
+        effort: xhigh
+    - instructions: runtime-injected
+    - input: runtime-injected
+  codex-luna:
+    endpoint: http://127.0.0.1:8766/v1/responses
+    api_key: codex-local
+    payload:
+    - model: gpt-6-luna
+    - reasoning:
+        effort: high
+    - instructions: runtime-injected
+    - input: runtime-injected
   local:
     endpoint: http://127.0.0.1:11434/v1/responses
     api_key: ollama
