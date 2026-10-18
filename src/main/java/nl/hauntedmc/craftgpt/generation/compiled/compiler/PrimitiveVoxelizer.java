@@ -14,10 +14,14 @@ public final class PrimitiveVoxelizer {
     }
 
     public void voxelize(PrimitiveOperation operation, VoxelConsumer consumer) {
+        voxelize(operation, consumer, point -> { });
+    }
+
+    public void voxelize(PrimitiveOperation operation, VoxelConsumer consumer, VoxelConsumer interior) {
         switch (operation) {
-            case BoxOperation box -> voxelizeBox(box, consumer);
-            case CylinderOperation cylinder -> voxelizeCylinder(cylinder, consumer);
-            case EllipsoidOperation ellipsoid -> voxelizeEllipsoid(ellipsoid, consumer);
+            case BoxOperation box -> voxelizeBox(box, consumer, interior);
+            case CylinderOperation cylinder -> voxelizeCylinder(cylinder, consumer, interior);
+            case EllipsoidOperation ellipsoid -> voxelizeEllipsoid(ellipsoid, consumer, interior);
             case LineOperation line -> voxelizeLine(line, consumer);
             case PointOperation point -> voxelizePoint(point, consumer);
             case PointSetOperation points -> voxelizePointSet(points, consumer);
@@ -26,13 +30,14 @@ public final class PrimitiveVoxelizer {
         }
     }
 
-    private void voxelizeBox(BoxOperation box, VoxelConsumer consumer) {
+    private void voxelizeBox(BoxOperation box, VoxelConsumer consumer, VoxelConsumer interior) {
         IntVec3 min = IntVec3.min(box.from(), box.to());
         IntVec3 max = IntVec3.max(box.from(), box.to());
         for (int y = min.y(); y <= max.y(); y++) {
             for (int z = min.z(); z <= max.z(); z++) {
                 for (int x = min.x(); x <= max.x(); x++) {
                     if (box.hollow() && !isOnHollowBoundary(x, y, z, min, max, box.wallThickness())) {
+                        interior.accept(new IntVec3(x, y, z));
                         continue;
                     }
                     consumer.accept(new IntVec3(x, y, z));
@@ -41,7 +46,7 @@ public final class PrimitiveVoxelizer {
         }
     }
 
-    private void voxelizeCylinder(CylinderOperation cylinder, VoxelConsumer consumer) {
+    private void voxelizeCylinder(CylinderOperation cylinder, VoxelConsumer consumer, VoxelConsumer interior) {
         int minA = axisStart(cylinder.center(), cylinder.axis());
         int maxA = minA + cylinder.height() - 1;
         for (int axisCoord = minA; axisCoord <= maxA; axisCoord++) {
@@ -56,6 +61,7 @@ public final class PrimitiveVoxelizer {
                         continue;
                     }
                     if (cylinder.hollow() && distanceSquared < innerSquared) {
+                        interior.accept(axisPoint(cylinder.axis(), axisCoord, cylinder.center(), first, second));
                         continue;
                     }
                     consumer.accept(axisPoint(cylinder.axis(), axisCoord, cylinder.center(), first, second));
@@ -64,7 +70,7 @@ public final class PrimitiveVoxelizer {
         }
     }
 
-    private void voxelizeEllipsoid(EllipsoidOperation ellipsoid, VoxelConsumer consumer) {
+    private void voxelizeEllipsoid(EllipsoidOperation ellipsoid, VoxelConsumer consumer, VoxelConsumer interior) {
         int outerRxSq = ellipsoid.radiusX() * ellipsoid.radiusX();
         int outerRySq = ellipsoid.radiusY() * ellipsoid.radiusY();
         int outerRzSq = ellipsoid.radiusZ() * ellipsoid.radiusZ();
@@ -82,6 +88,7 @@ public final class PrimitiveVoxelizer {
                     if (ellipsoid.hollow() && innerRx > 0 && innerRy > 0 && innerRz > 0
                             && isInsideEllipsoid(x, y, z, ellipsoid.center(), innerRx, innerRy, innerRz,
                             innerRx * innerRx, innerRy * innerRy, innerRz * innerRz)) {
+                        interior.accept(new IntVec3(x, y, z));
                         continue;
                     }
                     consumer.accept(new IntVec3(x, y, z));

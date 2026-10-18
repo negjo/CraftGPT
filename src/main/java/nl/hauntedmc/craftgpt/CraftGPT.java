@@ -76,6 +76,15 @@ public final class CraftGPT extends JavaPlugin {
         configuration.options().pathSeparator('/');
         try {
             configuration.load(messagesFile);
+            // New message keys must work with existing customized messages.yml files.
+            try (var stream = getResource("messages.yml")) {
+                if (stream != null) {
+                    YamlConfiguration defaults = new YamlConfiguration();
+                    defaults.options().pathSeparator('/');
+                    defaults.load(new java.io.InputStreamReader(stream, java.nio.charset.StandardCharsets.UTF_8));
+                    configuration.setDefaults(defaults);
+                }
+            }
         } catch (IOException | InvalidConfigurationException e) {
             getLogger().warning("Could not load messages.yml: " + e.getMessage());
         }

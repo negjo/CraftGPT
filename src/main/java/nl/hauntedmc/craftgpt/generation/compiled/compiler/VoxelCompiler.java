@@ -80,7 +80,16 @@ public final class VoxelCompiler {
             return new CompileResult(null, failures);
         }
 
-        List<SparseCuboid> cuboids = compressor.compress(voxelModel);
+        VoxelModel placements = voxelModel.copy();
+        if (!voxelModel.clearedCells().isEmpty()) {
+            try {
+                var air = new ResolvedPaletteEntry("$air", "minecraft:air", paletteResolver.resolve("minecraft:air"));
+                for (long cell : voxelModel.clearedCells()) placements.put(VoxelModel.unpack(cell), air);
+            } catch (PaletteValidationException e) {
+                return new CompileResult(null, List.of(new BuildFailure("invalid_air_material", e.getMessage(), false)));
+            }
+        }
+        List<SparseCuboid> cuboids = compressor.compress(placements);
         if (cuboids.size() > context.limits().maxSparseSegmentsPerGeneration()) {
             failures.add(new BuildFailure("sparse_segment_limit_exceeded",
                     "Sparse cuboid compression exceeded max_sparse_segments_per_generation.", true));
@@ -99,7 +108,8 @@ public final class VoxelCompiler {
                 context.buildVolume(),
                 context.classification(),
                 counters.materialReplacements,
-                counters.cutCells
+                counters.cutCells,
+                context.terrain()
         );
         if (validationResult.hasFatalErrors()) {
             validationResult.diagnostics().stream()
@@ -126,68 +136,41 @@ public final class VoxelCompiler {
 
     private void applyOperation(PrimitiveOperation operation, Transform transform, Map<String, ResolvedPaletteEntry> paletteById,
                                 VoxelModel voxelModel, BuildVolume volume, GenerationContext context, Counters counters) {
-        ResolvedPaletteEntry paletteEntry = null;
-        if (operation.mode() == OperationMode.ADD) {
-            paletteEntry = paletteById.get(operation.paletteId());
-            if (paletteEntry == null) {
-                throw new CompileRuntimeException(new CompileException(
-                        "undefined_palette_id",
-                        "Undefined palette ID: " + operation.paletteId() + ".",
-                        true
-                ));
-            }
+        ResolvedPaletteEntry paletteEntry = operation.mode() == OperationMode.ADD ? paletteById.get(operation.paletteId()) : null;
+        if (operation.mode() == OperationMode.ADD && paletteEntry == null) {
+            throw new CompileRuntimeException(new CompileException("undefined_palette_id", "Undefined palette ID: " + operation.paletteId() + ".", true));
         }
-
-        ResolvedPaletteEntry finalPaletteEntry = paletteEntry;
-        try {
-            primitiveVoxelizer.voxelize(operation, localPoint -> {
-                IntVec3 transformedPoint;
-                try {
-                    transformedPoint = transform == null ? localPoint : transform.apply(localPoint);
-                } catch (ArithmeticException e) {
-                    throw new CompileRuntimeException(new CompileException("numeric_overflow", "Numeric overflow while transforming component coordinates.", true));
-                }
-                if (!volume.contains(transformedPoint)) {
-                    if (context.ignoreOutOfBoundsPlacements()) {
-                        return;
-                    }
-                    throw new CompileRuntimeException(new CompileException("coordinate_outside_selection",
-                            "Generated coordinate [%d,%d,%d] is outside local bounds X: 0..%d, Y: 0..%d, Z: 0..%d. All coordinates and inclusive endpoints must stay inside those ranges."
-                                    .formatted(
-                                            transformedPoint.x(),
-                                            transformedPoint.y(),
-                                            transformedPoint.z(),
-                                            volume.maxX(),
-                                            volume.maxY(),
-                                            volume.maxZ()
-                                    ), true));
-                }
-
-                if (operation.mode() == OperationMode.CUT) {
-                    if (voxelModel.remove(transformedPoint) != null) {
-                        counters.cutCells++;
-                    }
-                    return;
-                }
-
-                ResolvedPaletteEntry replaced = voxelModel.put(transformedPoint, finalPaletteEntry);
-                if (replaced != null && !replaced.equals(finalPaletteEntry)) {
-                    counters.materialReplacements++;
-                }
-                if (voxelModel.size() > context.limits().maxMatrixBlocksPerGeneration()) {
-                    throw new CompileRuntimeException(new CompileException("occupied_cell_limit_exceeded",
-                            "Occupied-cell limit exceeded during compilation.", true));
-                }
-            });
-        } catch (IllegalArgumentException e) {
-            throw new CompileRuntimeException(new CompileException(
-                    "malformed_build_program",
-                    e.getMessage() == null ? "The build program contained an invalid primitive definition." : e.getMessage(),
-                    true
-            ));
+        boolean explicitAir = paletteEntry != null && isAir(paletteEntry.block().canonicalBlockState());
+        java.util.function.BiConsumer<IntVec3, Boolean> apply = (localPoint, interior) -> {
+            if (Thread.currentThread().isInterrupted()) throw new java.util.concurrent.CancellationException();
+            IntVec3 point;
+            try { point = transform == null ? localPoint : transform.apply(localPoint); }
+            catch (ArithmeticException e) { throw new CompileRuntimeException(new CompileException("numeric_overflow", "Numeric overflow transforming coordinates.", true)); }
+            if (!volume.contains(point)) {
+                if (context.ignoreOutOfBoundsPlacements()) return;
+                throw new CompileRuntimeException(new CompileException("coordinate_outside_selection",
+                        "Generated coordinate [%d,%d,%d] is outside local bounds X: 0..%d, Y: 0..%d, Z: 0..%d."
+                                .formatted(point.x(),point.y(),point.z(),volume.maxX(),volume.maxY(),volume.maxZ()), true));
+            }
+            if (operation.mode() == OperationMode.CUT || explicitAir || interior) {
+                if (voxelModel.clear(point) != null) counters.cutCells++;
+            } else {
+                var replaced = voxelModel.put(point, paletteEntry);
+                if (replaced != null && !replaced.equals(paletteEntry)) counters.materialReplacements++;
+            }
+            if (voxelModel.touchedSize() > context.limits().maxMatrixBlocksPerGeneration()) {
+                throw new CompileRuntimeException(new CompileException("occupied_cell_limit_exceeded", "Combined solid and air cell limit exceeded during compilation.", true));
+            }
+        };
+        try { primitiveVoxelizer.voxelize(operation, point -> apply.accept(point, false), point -> { if (operation.mode() == OperationMode.ADD) apply.accept(point, true); }); }
+        catch (IllegalArgumentException e) {
+            throw new CompileRuntimeException(new CompileException("malformed_build_program", e.getMessage() == null ? "Invalid primitive definition." : e.getMessage(), true));
         }
     }
 
+    private static boolean isAir(String state) {
+        return state.equals("minecraft:air") || state.equals("minecraft:cave_air") || state.equals("minecraft:void_air");
+    }
     private static final class Counters {
         private int materialReplacements;
         private int cutCells;

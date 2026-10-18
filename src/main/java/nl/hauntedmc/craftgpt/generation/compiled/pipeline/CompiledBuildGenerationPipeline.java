@@ -49,24 +49,48 @@ public final class CompiledBuildGenerationPipeline implements BuildGenerationPip
 
     @Override
     public PipelineResult generate(PipelineRequest request) {
-        String designPlanJson = createDesignPlan(request);
+        PreviewArtifactSet terrainPreviews = null;
+        try {
+            if (request.context().terrain().hasBlocks()) {
+                request.reportProgress("Rendering the existing terrain for the model...");
+                terrainPreviews = previewRenderer.render(request.context().terrain().existingModel(),
+                        request.context().visualReviewSettings().previewSize(),
+                        List.of(PreviewPerspective.TOP,PreviewPerspective.ISOMETRIC),false,"");
+                request = request.withTerrain(request.context().terrain().withImages(previewAttachments(terrainPreviews)));
+            }
+            PipelineResult result = generateBuild(request);
+            if (result.success()) request.reportProgress("Build ready. Sending validated geometry and air clears to WorldEdit.");
+            return result;
+        } catch (IOException e) {
+            return PipelineResult.failure("preview_render_failed","Could not render the terrain snapshot: " + e.getMessage(),"","");
+        } finally { if (terrainPreviews != null) terrainPreviews.close(); }
+    }
+    private PipelineResult generateBuild(PipelineRequest request) {
+        AiResponse planning = createDesignPlan(request);
+        if (!planning.success()) {
+            request.reportProgress("Planning failed; stopping without generating geometry.");
+            return PipelineResult.failure("planning_failed", "Build planning failed: " + planning.failureMessage(), "", planning.rawResponse());
+        }
+        String designPlanJson = planning.content();
         String initialOutput = "";
         String successfulGenerationOutput = "";
         AiResponse generationResponse = null;
         List<BuildFailure> lastFailures = List.of();
         for (int attempt = 1; attempt <= Math.max(1, request.maxGenerationAttempts()); attempt++) {
+            request.reportProgress("Generating build geometry (attempt " + attempt + "/" + Math.max(1, request.maxGenerationAttempts()) + ")...");
             generationResponse = aiClient.execute(
                     request.modelPreset(),
                     new AiRequest(
                             "build_program_v2",
-                            buildGenerationInstructions(request, designPlanJson, attempt, lastFailures),
+                            buildGenerationInstructions(request, designPlanJson, attempt, lastFailures) + request.context().terrain().promptContext(),
                             buildGenerationInput(request, designPlanJson),
                             SchemaFactory.compiledBuildProgramSchema(request.context().limits()),
-                            List.of()
+                            request.context().terrain().images()
                     ),
                     request.timeoutSeconds()
             );
             if (!generationResponse.success()) {
+                request.reportProgress("Generation request failed" + (generationResponse.retryable() && attempt < request.maxGenerationAttempts() ? "; retrying..." : "."));
                 if (!generationResponse.retryable() || attempt >= request.maxGenerationAttempts()) {
                     return PipelineResult.failure("request_failed", generationResponse.failureMessage(), "", generationResponse.rawResponse());
                 }
@@ -81,6 +105,7 @@ public final class CompiledBuildGenerationPipeline implements BuildGenerationPip
             CompilationAttempt attemptResult = parseAndCompile(currentOutput, request);
             if (!attemptResult.success()) {
                 lastFailures = attemptResult.failures();
+                request.reportProgress("Generated geometry failed validation; checking retry and repair options.");
                 if (canRetryGeneration(attempt, request, lastFailures)) {
                     continue;
                 }
@@ -108,41 +133,41 @@ public final class CompiledBuildGenerationPipeline implements BuildGenerationPip
         return PipelineResult.failure(failure.code(), failure.message(), initialOutput, successfulGenerationOutput);
     }
 
-    private String createDesignPlan(PipelineRequest request) {
+    private AiResponse createDesignPlan(PipelineRequest request) {
         WorkflowSettings workflow = request.workflowSettings();
         if (!workflow.planningEnabled()) {
-            return "";
+            return AiResponse.success("", "");
         }
 
+        int attempts = Math.min(2, Math.max(1, request.maxGenerationAttempts()));
         AiResponse response = null;
-        for (int attempt = 1; attempt <= Math.min(2, Math.max(1, request.maxGenerationAttempts())); attempt++) {
+        for (int attempt = 1; attempt <= attempts; attempt++) {
+            request.reportProgress("Planning the build (attempt " + attempt + "/" + attempts + ")...");
             response = aiClient.execute(
                     request.modelPreset(),
                     new AiRequest(
                             "design_plan_v1",
-                            buildPlanInstructions(request),
+                            buildPlanInstructions(request) + request.context().terrain().promptContext(),
                             buildPlanInput(request),
                             SchemaFactory.designPlanSchema(),
-                            List.of()
+                            request.context().terrain().images()
                     ),
                     request.timeoutSeconds()
             );
-            if (!response.success()) {
-                if (!response.retryable()) {
-                    return "";
+            if (response.success()) {
+                try {
+                    validateDesignPlan(response.content());
+                    request.reportProgress("Design plan received.");
+                    return response;
+                } catch (IllegalArgumentException e) {
+                    response = AiResponse.failure(e.getMessage(), response.rawResponse(), true);
                 }
-                continue;
             }
-            try {
-                validateDesignPlan(response.content());
-                return response.content();
-            } catch (IllegalArgumentException ignored) {
-                return "";
-            }
+            if (!response.retryable()) break;
+            if (attempt < attempts) request.reportProgress("Planning attempt failed; retrying planning...");
         }
-        return "";
+        return response;
     }
-
     private PipelineResult postProcessValidBuild(PipelineRequest request, String designPlanJson, String initialOutput, Candidate baseCandidate) {
         Candidate candidate = baseCandidate;
         int refinementBudget = refinementBudget(request, candidate.build());
@@ -152,6 +177,7 @@ public final class CompiledBuildGenerationPipeline implements BuildGenerationPip
 
         boolean repaired = false;
         for (int pass = 1; pass <= refinementBudget; pass++) {
+            request.reportProgress("Quality review " + pass + "/" + refinementBudget + ".");
             DesignCritique critique = requestCritique(request, designPlanJson, candidate);
             boolean warningDrivenRefinement = request.repairWarningsEnabled() && candidate.build().validationResult().hasWarnings();
             boolean shouldRefine = warningDrivenRefinement || (critique != null && critique.shouldRefine());
@@ -170,6 +196,7 @@ public final class CompiledBuildGenerationPipeline implements BuildGenerationPip
                     critique
             );
             if (!refined.success()) {
+                request.reportProgress("Refinement failed; keeping the last valid build.");
                 return toSuccess(initialOutput, candidate, repaired);
             }
 
@@ -230,10 +257,12 @@ public final class CompiledBuildGenerationPipeline implements BuildGenerationPip
         for (int attempt = 1; attempt <= request.maxRepairAttempts(); attempt++) {
             PreviewArtifactSet previews = null;
             try {
-                List<AiImageAttachment> images = List.of();
+                List<AiImageAttachment> images = request.context().terrain().images();
+                request.reportProgress("Refining or repairing the build (attempt " + attempt + "/" + request.maxRepairAttempts() + ")...");
                 if (includeVisualReview && initialBuild != null && request.context().visualReviewSettings().enabled()) {
+                    request.reportProgress("Rendering previews for refinement...");
                     previews = previewRenderer.render(
-                            initialBuild.voxelModel(),
+                            request.context().terrain().preview(initialBuild.voxelModel()),
                             request.context().visualReviewSettings().previewSize(),
                             previewPerspectives(request),
                             request.context().visualReviewSettings().debugArtifactsEnabled(),
@@ -242,11 +271,12 @@ public final class CompiledBuildGenerationPipeline implements BuildGenerationPip
                     images = previewAttachments(previews);
                 }
 
+                request.reportProgress("Waiting for the revised build...");
                 AiResponse repairResponse = aiClient.execute(
                         request.modelPreset(),
                         new AiRequest(
                                 "build_program_v2_repair",
-                                buildRepairInstructions(request, designPlanJson, critiqueJson),
+                                buildRepairInstructions(request, designPlanJson, critiqueJson) + request.context().terrain().promptContext(),
                                 buildRepairInput(request, designPlanJson, latestOutput, latestDiagnostics, critiqueJson),
                                 SchemaFactory.compiledBuildProgramSchema(request.context().limits()),
                                 images
@@ -297,10 +327,11 @@ public final class CompiledBuildGenerationPipeline implements BuildGenerationPip
 
         PreviewArtifactSet previews = null;
         try {
-            List<AiImageAttachment> images = List.of();
+            List<AiImageAttachment> images = request.context().terrain().images();
             if (shouldUseVisualReview(request) && request.context().visualReviewSettings().enabled()) {
+                request.reportProgress("Rendering build previews...");
                 previews = previewRenderer.render(
-                        candidate.build().voxelModel(),
+                        request.context().terrain().preview(candidate.build().voxelModel()),
                         request.context().visualReviewSettings().previewSize(),
                         previewPerspectives(request),
                         request.context().visualReviewSettings().debugArtifactsEnabled(),
@@ -308,11 +339,12 @@ public final class CompiledBuildGenerationPipeline implements BuildGenerationPip
                 );
                 images = previewAttachments(previews);
             }
+            request.reportProgress(images.isEmpty() ? "Reviewing build quality..." : "Reviewing the rendered build images...");
             AiResponse response = aiClient.execute(
                     request.modelPreset(),
                     new AiRequest(
                             "build_critique_v1",
-                            buildCritiqueInstructions(request),
+                            buildCritiqueInstructions(request) + request.context().terrain().promptContext(),
                             buildCritiqueInput(request, designPlanJson, candidate.modelOutput(), candidate.build()),
                             SchemaFactory.designCritiqueSchema(),
                             images
@@ -320,9 +352,12 @@ public final class CompiledBuildGenerationPipeline implements BuildGenerationPip
                     request.timeoutSeconds()
             );
             if (!response.success()) {
+                request.reportProgress("AI planning or review request failed; using available results where possible.");
                 return null;
             }
-            return validateDesignCritique(response.content());
+            DesignCritique critique = validateDesignCritique(response.content());
+            request.reportProgress(critique.shouldRefine() ? "Review found improvements; preparing refinement." : "Review accepted the design.");
+            return critique;
         } catch (IOException | IllegalArgumentException ignored) {
             return null;
         } finally {
@@ -333,12 +368,14 @@ public final class CompiledBuildGenerationPipeline implements BuildGenerationPip
     }
 
     private CompilationAttempt parseAndCompile(String rawOutput, PipelineRequest request) {
+        request.reportProgress("Compiling and validating generated geometry...");
         try {
             BuildProgram program = parser.parse(rawOutput, request.context().limits());
             CompileResult compileResult = compiler.compile(program, request.context(), paletteResolver);
             if (!compileResult.isSuccess()) {
                 return CompilationAttempt.failure(compileResult.failures());
             }
+            request.reportProgress("Geometry validated: " + compileResult.compiledBuild().voxelModel().size() + " occupied blocks.");
             return CompilationAttempt.success(compileResult.compiledBuild());
         } catch (BuildProgramParseException e) {
             return CompilationAttempt.failure(List.of(new BuildFailure("malformed_build_program", e.getMessage(), e.isRepairable())));

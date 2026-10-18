@@ -28,6 +28,7 @@ public final class CraftGPTCommand implements CommandExecutor, TabCompleter {
     private static final int MAX_PROMPT_PREVIEW_LENGTH = 240;
     private static final String GENERATE_SUBCOMMAND = "generate";
     private static final String RELOAD_SUBCOMMAND = "reload";
+    private static final String STOP_SUBCOMMAND = "stop";
     private static final PlainTextComponentSerializer PLAIN_TEXT_SERIALIZER = PlainTextComponentSerializer.plainText();
 
     private final GenerationCoordinator generationCoordinator;
@@ -47,6 +48,7 @@ public final class CraftGPTCommand implements CommandExecutor, TabCompleter {
         return switch (args[0].toLowerCase(Locale.ROOT)) {
             case GENERATE_SUBCOMMAND -> handleGenerate(sender, args);
             case RELOAD_SUBCOMMAND -> handleReload(sender);
+            case STOP_SUBCOMMAND -> handleStop(sender);
             default -> {
                 sendUsage(sender);
                 yield true;
@@ -58,7 +60,7 @@ public final class CraftGPTCommand implements CommandExecutor, TabCompleter {
     public @Nullable List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command,
                                                 @NotNull String alias, @NotNull String[] args) {
         if (args.length == 1) {
-            return filterByPrefix(List.of(GENERATE_SUBCOMMAND, RELOAD_SUBCOMMAND), args[0]);
+            return filterByPrefix(List.of(GENERATE_SUBCOMMAND, RELOAD_SUBCOMMAND, STOP_SUBCOMMAND), args[0]);
         }
         if (args.length == 2 && GENERATE_SUBCOMMAND.equalsIgnoreCase(args[0])) {
             return filterByPrefix(ConfigManager.getModelList(), args[1]);
@@ -120,6 +122,19 @@ public final class CraftGPTCommand implements CommandExecutor, TabCompleter {
         );
     }
 
+    private boolean handleStop(CommandSender sender) {
+        if (!(sender instanceof Player player)) {
+            Feedback.sendFeedback(sender, "error.not_a_player");
+            return true;
+        }
+        if (!sender.hasPermission("craftgpt.use")) {
+            Feedback.sendFeedback(sender, "error.permission.use");
+            return true;
+        }
+        Feedback.sendFeedback(player, generationCoordinator.stopGeneration(player.getUniqueId())
+                ? "done.stopped" : "info.nothing_to_stop");
+        return true;
+    }
     private boolean handleReload(CommandSender sender) {
         if (!sender.hasPermission("craftgpt.reload")) {
             Feedback.sendFeedback(sender, "error.permission.reload");
@@ -170,6 +185,7 @@ public final class CraftGPTCommand implements CommandExecutor, TabCompleter {
         Feedback.sendFeedback(sender, "info.usage.header");
         Feedback.sendFeedback(sender, "info.usage.generate");
         Feedback.sendFeedback(sender, "info.usage.reload");
+        Feedback.sendFeedback(sender, "info.usage.stop");
     }
 
     private List<String> filterByPrefix(List<String> values, String current) {

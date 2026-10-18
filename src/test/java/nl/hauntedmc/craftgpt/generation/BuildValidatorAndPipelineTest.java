@@ -309,18 +309,24 @@ class BuildValidatorAndPipelineTest {
                 java.util.Map.of()
         );
 
-        PipelineResult result = pipeline.generate(request);
+        var progress = new java.util.ArrayList<String>();
+        PipelineResult result = pipeline.generate(request.withProgress(progress::add));
 
         assertTrue(result.success());
         assertTrue(result.repaired());
         assertEquals(5, aiClient.requests().size());
+        assertTrue(progress.stream().anyMatch(message -> message.startsWith("Planning the build")));
+        assertTrue(progress.contains("Rendering build previews..."));
+        assertTrue(progress.contains("Reviewing the rendered build images..."));
+        assertTrue(progress.stream().anyMatch(message -> message.startsWith("Refining or repairing")));
+        assertTrue(progress.contains("Review accepted the design."));
         assertEquals("design_plan_v1", aiClient.requests().get(0).schemaName());
         assertEquals(6, aiClient.requests().get(2).images().size());
         assertEquals(6, aiClient.requests().get(3).images().size());
     }
 
     @Test
-    void ignoresMalformedDesignPlanJsonInsteadOfCrashingAsyncGeneration() {
+    void stopsAfterMalformedDesignPlanInsteadOfGeneratingWithoutOne() {
         String malformedPlan = "{\"summary\":\"broken";
         String build = """
                 {"v":2,"o":[0,0,0],"p":[{"i":"1","b":"minecraft:red_wool"}],"c":[],"i":[],"a":[
@@ -365,9 +371,9 @@ class BuildValidatorAndPipelineTest {
 
         PipelineResult result = pipeline.generate(request);
 
-        assertTrue(result.success());
-        assertEquals(3, aiClient.requests().size());
-        assertEquals("design_plan_v1", aiClient.requests().get(0).schemaName());
-        assertEquals("build_program_v2", aiClient.requests().get(1).schemaName());
+        assertFalse(result.success());
+        assertEquals("planning_failed", result.failureCode());
+        assertEquals(1, aiClient.requests().size());
+        assertEquals("design_plan_v1", aiClient.requests().getFirst().schemaName());
     }
 }

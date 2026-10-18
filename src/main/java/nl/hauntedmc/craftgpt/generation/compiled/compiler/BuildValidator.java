@@ -19,7 +19,17 @@ import java.util.TreeSet;
 public final class BuildValidator {
     public ValidationResult validate(BuildProgram program, VoxelModel voxelModel, List<SparseCuboid> cuboids, BuildVolume volume,
                                      RequestClassification classification, int materialReplacementCount, int cutCellCount) {
+        return validate(program,voxelModel,cuboids,volume,classification,materialReplacementCount,cutCellCount,
+                nl.hauntedmc.craftgpt.generation.terrain.TerrainSnapshot.empty());
+    }
+
+    public ValidationResult validate(BuildProgram program, VoxelModel voxelModel, List<SparseCuboid> cuboids, BuildVolume volume,
+                                     RequestClassification classification, int materialReplacementCount, int cutCellCount,
+                                     nl.hauntedmc.craftgpt.generation.terrain.TerrainSnapshot terrain) {
         List<BuildDiagnostic> diagnostics = new ArrayList<>();
+        if (voxelModel.size() == 0 && !voxelModel.clearedCells().isEmpty()) {
+            return new ValidationResult(List.of(), emptyMetrics(program,cuboids,materialReplacementCount,cutCellCount));
+        }
         if (voxelModel.size() == 0) {
             diagnostics.add(new BuildDiagnostic(BuildDiagnostic.Severity.FATAL, "empty_final_build", "The final build is empty."));
             return new ValidationResult(diagnostics, emptyMetrics(program, cuboids, materialReplacementCount, cutCellCount));
@@ -69,7 +79,7 @@ public final class BuildValidator {
             if (isDetailBlock(entry.getValue().block().canonicalBlockState())) {
                 detailBlocks++;
             }
-            if (point.y() == 0) {
+            if (point.y() == 0 || terrain.providesSupport(new IntVec3(point.x(),point.y()-1,point.z()),voxelModel)) {
                 groundContactCount++;
             } else if (!containsVoxel(voxelModel, new IntVec3(point.x(), point.y() - 1, point.z()))) {
                 unsupported++;
@@ -154,6 +164,8 @@ public final class BuildValidator {
 
         Map<String, Object> machineReadable = new HashMap<>();
         machineReadable.put("occupiedCellCount", voxelModel.size());
+        machineReadable.put("airEditCount", voxelModel.clearedCells().size());
+        machineReadable.put("terrainSnapshotAvailable", terrain.available());
         machineReadable.put("paletteSize", materials.size());
         machineReadable.put("dslOperationCount", program.operations().size() + program.components().stream().mapToInt(component -> component.operations().size()).sum());
         machineReadable.put("instanceCount", program.expandedInstanceCount());

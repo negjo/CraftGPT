@@ -14,6 +14,7 @@ public final class VoxelModel {
     private static final long COORD_MASK = (1L << COORD_BITS) - 1L;
 
     private final Map<Long, ResolvedPaletteEntry> occupied = new LinkedHashMap<>();
+    private final Set<Long> cleared = new java.util.LinkedHashSet<>();
 
     public Set<Map.Entry<Long, ResolvedPaletteEntry>> entries() {
         return Collections.unmodifiableSet(occupied.entrySet());
@@ -28,9 +29,17 @@ public final class VoxelModel {
     }
 
     public ResolvedPaletteEntry put(IntVec3 point, ResolvedPaletteEntry paletteEntry) {
+        cleared.remove(pack(point));
         return occupied.put(pack(point), paletteEntry);
     }
 
+    public ResolvedPaletteEntry clear(IntVec3 point) {
+        cleared.add(pack(point));
+        return occupied.remove(pack(point));
+    }
+
+    public Set<Long> clearedCells() { return Collections.unmodifiableSet(cleared); }
+    public int touchedSize() { return occupied.size() + cleared.size(); }
     public ResolvedPaletteEntry remove(IntVec3 point) {
         return occupied.remove(pack(point));
     }
@@ -90,6 +99,7 @@ public final class VoxelModel {
     public VoxelModel copy() {
         VoxelModel copy = new VoxelModel();
         copy.occupied.putAll(occupied);
+        copy.cleared.addAll(cleared);
         return copy;
     }
 
@@ -98,11 +108,11 @@ public final class VoxelModel {
         if (!(other instanceof VoxelModel model)) {
             return false;
         }
-        return Objects.equals(occupied, model.occupied);
+        return Objects.equals(occupied, model.occupied) && Objects.equals(cleared, model.cleared);
     }
 
     @Override
     public int hashCode() {
-        return occupied.hashCode();
+        return Objects.hash(occupied, cleared);
     }
 }

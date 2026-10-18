@@ -1,117 +1,52 @@
 package nl.hauntedmc.craftgpt.util;
 
 import com.google.gson.Gson;
-import nl.hauntedmc.craftgpt.CraftGPT;
-
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.OutputStream;
-import java.net.HttpURLConnection;
-import java.net.MalformedURLException;
 import java.net.URI;
-import java.net.SocketTimeoutException;
-import java.nio.charset.StandardCharsets;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.net.http.HttpTimeoutException;
+import java.time.Duration;
 import java.util.Map;
+import java.util.concurrent.CancellationException;
 
 public final class RequestHandler {
     private static final Gson GSON = new Gson();
+    private static final HttpClient CLIENT = HttpClient.newBuilder()
+            .version(HttpClient.Version.HTTP_1_1).build();
 
-    private RequestHandler() {
-    }
+    private RequestHandler() { }
 
     public static RequestResult doRequest(String urlString, Map<String, Object> payload, String apiKey, int timeoutSeconds) {
-        int effectiveTimeoutSeconds = Math.max(1, timeoutSeconds);
-        if (urlString == null || urlString.trim().isEmpty()) {
-            return RequestResult.failure("Endpoint is not configured.");
-        }
-
-        HttpURLConnection connection = null;
+        if (Thread.currentThread().isInterrupted()) throw new CancellationException("Generation stopped.");
+        int timeout = Math.max(1, timeoutSeconds);
+        if (urlString == null || urlString.isBlank()) return RequestResult.failure("Endpoint is not configured.");
         try {
-            String jsonPayload = GSON.toJson(payload);
-            connection = (HttpURLConnection) URI.create(urlString).toURL().openConnection();
-            configureConnection(connection, effectiveTimeoutSeconds, apiKey);
-            connection.setRequestMethod("POST");
-            writePayload(connection, jsonPayload);
-
-            int responseCode = connection.getResponseCode();
-            InputStream responseStream = responseCode >= 200 && responseCode < 300
-                    ? connection.getInputStream()
-                    : connection.getErrorStream();
-            String body = readResponse(responseStream);
-
-            if (responseCode >= 200 && responseCode < 300) {
-                return RequestResult.success(responseCode, body);
-            }
-            return RequestResult.httpError(responseCode, body);
-        } catch (SocketTimeoutException e) {
-            return RequestResult.failure("Request timed out after " + effectiveTimeoutSeconds + " seconds.");
-        } catch (IllegalArgumentException | MalformedURLException e) {
+            var builder = HttpRequest.newBuilder(URI.create(urlString)).timeout(Duration.ofSeconds(timeout))
+                    .header("Content-Type", "application/json")
+                    .header("Accept", "application/json")
+                    .header("User-Agent", "CraftGPT")
+                    .POST(HttpRequest.BodyPublishers.ofString(GSON.toJson(payload)));
+            if (apiKey != null && !apiKey.isBlank()) builder.header("Authorization",
+                    apiKey.regionMatches(true, 0, "Bearer ", 0, 7) ? apiKey.trim() : "Bearer " + apiKey.trim());
+            // send() is interruptible: cancelling the generation aborts the HTTP exchange,
+            // allowing the local bridge to close its dedicated Codex session too.
+            var response = CLIENT.send(builder.build(), HttpResponse.BodyHandlers.ofString());
+            return response.statusCode() >= 200 && response.statusCode() < 300
+                    ? RequestResult.success(response.statusCode(), response.body())
+                    : RequestResult.httpError(response.statusCode(), response.body());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new CancellationException("Generation stopped.");
+        } catch (HttpTimeoutException e) {
+            return RequestResult.failure("Request timed out after " + timeout + " seconds.");
+        } catch (IllegalArgumentException e) {
             return RequestResult.failure("Invalid endpoint URL: " + e.getMessage());
         } catch (IOException e) {
-            String message = e.getMessage() == null ? e.getClass().getSimpleName() : e.getClass().getSimpleName() + ": " + e.getMessage();
-            return RequestResult.failure(message);
-        } finally {
-            if (connection != null) {
-                connection.disconnect();
-            }
+            return RequestResult.failure(e.getClass().getSimpleName() + ": " + e.getMessage());
         }
     }
-
-    private static void configureConnection(HttpURLConnection connection, int timeoutSeconds, String apiKey) {
-        int timeoutMillis = timeoutSeconds * 1000;
-        connection.setConnectTimeout(timeoutMillis);
-        connection.setReadTimeout(timeoutMillis);
-        connection.setRequestProperty("Content-Type", "application/json");
-        connection.setRequestProperty("Accept", "application/json");
-        connection.setRequestProperty("User-Agent", buildUserAgent());
-        String authorizationHeader = buildAuthorizationHeader(apiKey);
-        if (authorizationHeader != null) {
-            connection.setRequestProperty("Authorization", authorizationHeader);
-        }
-        connection.setDoOutput(true);
-    }
-
-    private static void writePayload(HttpURLConnection connection, String jsonPayload) throws IOException {
-        byte[] input = jsonPayload.getBytes(StandardCharsets.UTF_8);
-        try (OutputStream outputStream = connection.getOutputStream()) {
-            outputStream.write(input, 0, input.length);
-        }
-    }
-
-    private static String buildUserAgent() {
-        return "CraftGPT/" + CraftGPT.getInstance().getPluginMeta().getVersion();
-    }
-
-    private static String buildAuthorizationHeader(String apiKey) {
-        if (apiKey == null || apiKey.trim().isEmpty()) {
-            return null;
-        }
-        String trimmedApiKey = apiKey.trim();
-        if (trimmedApiKey.regionMatches(true, 0, "Bearer ", 0, 7)) {
-            return trimmedApiKey;
-        }
-        return "Bearer " + trimmedApiKey;
-    }
-
-    private static String readResponse(InputStream responseStream) throws IOException {
-        if (responseStream == null) {
-            return "";
-        }
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(responseStream, StandardCharsets.UTF_8))) {
-            StringBuilder response = new StringBuilder();
-            String line;
-            while ((line = reader.readLine()) != null) {
-                if (response.length() > 0) {
-                    response.append('\n');
-                }
-                response.append(line);
-            }
-            return response.toString();
-        }
-    }
-
     public static final class RequestResult {
         private final boolean success;
         private final int statusCode;

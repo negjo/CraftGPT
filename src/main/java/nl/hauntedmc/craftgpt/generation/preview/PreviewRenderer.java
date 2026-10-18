@@ -32,6 +32,8 @@ public final class PreviewRenderer {
                                      boolean debugArtifactsEnabled, String debugDirectory) throws IOException {
         EnumMap<PreviewPerspective, BufferedImage> images = new EnumMap<>(PreviewPerspective.class);
         for (PreviewPerspective perspective : perspectives) {
+            if (Thread.currentThread().isInterrupted()) throw new java.util.concurrent.CancellationException();
+            if (voxelModel.size() == 0) { images.put(perspective,createImage(imageSize)); continue; }
             images.put(perspective, switch (perspective) {
                 case FRONT -> renderFront(voxelModel, imageSize);
                 case BACK -> renderBack(voxelModel, imageSize);
@@ -43,18 +45,26 @@ public final class PreviewRenderer {
         }
 
         EnumMap<PreviewPerspective, Path> files = new EnumMap<>(PreviewPerspective.class);
-        for (Map.Entry<PreviewPerspective, BufferedImage> entry : images.entrySet()) {
-            Path file = Files.createTempFile("craftgpt-preview-" + entry.getKey().name().toLowerCase(), ".png");
-            ImageIO.write(entry.getValue(), "png", file.toFile());
-            files.put(entry.getKey(), file);
+        try {
+            for (Map.Entry<PreviewPerspective, BufferedImage> entry : images.entrySet()) {
+                if (Thread.currentThread().isInterrupted()) throw new java.util.concurrent.CancellationException();
+                Path file = Files.createTempFile("craftgpt-preview-" + entry.getKey().name().toLowerCase(), ".png");
+                files.put(entry.getKey(), file);
+                ImageIO.write(entry.getValue(), "png", file.toFile());
 
-            if (debugArtifactsEnabled && debugDirectory != null && !debugDirectory.isBlank()) {
-                Path debugDir = Path.of(debugDirectory);
-                Files.createDirectories(debugDir);
-                ImageIO.write(entry.getValue(), "png", debugDir.resolve(file.getFileName().toString()).toFile());
+                if (debugArtifactsEnabled && debugDirectory != null && !debugDirectory.isBlank()) {
+                    Path debugDir = Path.of(debugDirectory);
+                    Files.createDirectories(debugDir);
+                    ImageIO.write(entry.getValue(), "png", debugDir.resolve(file.getFileName().toString()).toFile());
+                }
             }
+            return new PreviewArtifactSet(files);
+        } catch (IOException | RuntimeException e) {
+            for (Path file : files.values()) {
+                try { Files.deleteIfExists(file); } catch (IOException cleanup) { e.addSuppressed(cleanup); }
+            }
+            throw e;
         }
-        return new PreviewArtifactSet(files);
     }
 
     private BufferedImage renderFront(VoxelModel voxelModel, int imageSize) {
@@ -68,9 +78,13 @@ public final class PreviewRenderer {
         double yOffset = (imageSize - ((max.y() - min.y() + 1) * scale)) / 2.0d;
 
         for (int x = min.x(); x <= max.x(); x++) {
+
+            if (Thread.currentThread().isInterrupted()) throw new java.util.concurrent.CancellationException();
             for (int y = min.y(); y <= max.y(); y++) {
+                if (Thread.currentThread().isInterrupted()) throw new java.util.concurrent.CancellationException();
                 ResolvedPaletteEntry visible = null;
                 for (int z = min.z(); z <= max.z(); z++) {
+                    if (Thread.currentThread().isInterrupted()) throw new java.util.concurrent.CancellationException();
                     ResolvedPaletteEntry candidate = voxelModel.get(new IntVec3(x, y, z));
                     if (candidate != null) {
                         visible = candidate;
@@ -97,9 +111,13 @@ public final class PreviewRenderer {
         double yOffset = (imageSize - ((max.y() - min.y() + 1) * scale)) / 2.0d;
 
         for (int x = max.x(); x >= min.x(); x--) {
+
+            if (Thread.currentThread().isInterrupted()) throw new java.util.concurrent.CancellationException();
             for (int y = min.y(); y <= max.y(); y++) {
+                if (Thread.currentThread().isInterrupted()) throw new java.util.concurrent.CancellationException();
                 ResolvedPaletteEntry visible = null;
                 for (int z = max.z(); z >= min.z(); z--) {
+                    if (Thread.currentThread().isInterrupted()) throw new java.util.concurrent.CancellationException();
                     ResolvedPaletteEntry candidate = voxelModel.get(new IntVec3(x, y, z));
                     if (candidate != null) {
                         visible = candidate;
@@ -126,9 +144,13 @@ public final class PreviewRenderer {
         double yOffset = (imageSize - ((max.y() - min.y() + 1) * scale)) / 2.0d;
 
         for (int z = min.z(); z <= max.z(); z++) {
+
+            if (Thread.currentThread().isInterrupted()) throw new java.util.concurrent.CancellationException();
             for (int y = min.y(); y <= max.y(); y++) {
+                if (Thread.currentThread().isInterrupted()) throw new java.util.concurrent.CancellationException();
                 ResolvedPaletteEntry visible = null;
                 for (int x = max.x(); x >= min.x(); x--) {
+                    if (Thread.currentThread().isInterrupted()) throw new java.util.concurrent.CancellationException();
                     ResolvedPaletteEntry candidate = voxelModel.get(new IntVec3(x, y, z));
                     if (candidate != null) {
                         visible = candidate;
@@ -155,9 +177,13 @@ public final class PreviewRenderer {
         double yOffset = (imageSize - ((max.y() - min.y() + 1) * scale)) / 2.0d;
 
         for (int z = max.z(); z >= min.z(); z--) {
+
+            if (Thread.currentThread().isInterrupted()) throw new java.util.concurrent.CancellationException();
             for (int y = min.y(); y <= max.y(); y++) {
+                if (Thread.currentThread().isInterrupted()) throw new java.util.concurrent.CancellationException();
                 ResolvedPaletteEntry visible = null;
                 for (int x = min.x(); x <= max.x(); x++) {
+                    if (Thread.currentThread().isInterrupted()) throw new java.util.concurrent.CancellationException();
                     ResolvedPaletteEntry candidate = voxelModel.get(new IntVec3(x, y, z));
                     if (candidate != null) {
                         visible = candidate;
@@ -184,9 +210,13 @@ public final class PreviewRenderer {
         double yOffset = (imageSize - ((max.z() - min.z() + 1) * scale)) / 2.0d;
 
         for (int x = min.x(); x <= max.x(); x++) {
+
+            if (Thread.currentThread().isInterrupted()) throw new java.util.concurrent.CancellationException();
             for (int z = min.z(); z <= max.z(); z++) {
+                if (Thread.currentThread().isInterrupted()) throw new java.util.concurrent.CancellationException();
                 ResolvedPaletteEntry visible = null;
                 for (int y = max.y(); y >= min.y(); y--) {
+                    if (Thread.currentThread().isInterrupted()) throw new java.util.concurrent.CancellationException();
                     ResolvedPaletteEntry candidate = voxelModel.get(new IntVec3(x, y, z));
                     if (candidate != null) {
                         visible = candidate;
@@ -212,6 +242,7 @@ public final class PreviewRenderer {
         double minX = Double.POSITIVE_INFINITY, maxX = Double.NEGATIVE_INFINITY;
         double minY = Double.POSITIVE_INFINITY, maxY = Double.NEGATIVE_INFINITY;
         for (var item : voxelModel.entries()) {
+            if (Thread.currentThread().isInterrupted()) throw new java.util.concurrent.CancellationException();
             IntVec3 point = VoxelModel.unpack(item.getKey());
             double px = (point.x() - min.x()) - (point.z() - min.z());
             double py = -(point.y() - min.y()) - ((point.x() - min.x()) + (point.z() - min.z())) / 2.0d;
@@ -283,6 +314,7 @@ public final class PreviewRenderer {
         int[] xs = new int[coordinates.length / 2];
         int[] ys = new int[coordinates.length / 2];
         for (int i = 0; i < coordinates.length; i += 2) {
+            if (Thread.currentThread().isInterrupted()) throw new java.util.concurrent.CancellationException();
             xs[i / 2] = (int) Math.round(coordinates[i]);
             ys[i / 2] = (int) Math.round(coordinates[i + 1]);
         }

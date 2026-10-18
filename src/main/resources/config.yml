@@ -6,7 +6,7 @@ particles_per_block: 5
 # How often the selection box particle effect updates, in ticks.
 selection_box_update_ticks: 3
 
-# Delay in ticks between each WorldEdit build batch.
+# Delay in ticks between WorldEdit batches. Zero uses one batch per tick so stop commands can run.
 build_delay: 0
 
 # Maximum number of cuboid operations applied in one WorldEdit batch.
@@ -58,6 +58,10 @@ max_dsl_components: 8
 max_dsl_instances: 4096
 max_dsl_operations: 8000
 max_dsl_operations_per_component: 64
+
+# Combined generated solid and air edits; terrain capture has its own limit below.
+# Maximum selection cells scanned for terrain context, including air.
+max_terrain_capture_cells: 10000000
 
 max_matrix_blocks_per_generation: 120000
 max_total_actions_per_generation: 120000

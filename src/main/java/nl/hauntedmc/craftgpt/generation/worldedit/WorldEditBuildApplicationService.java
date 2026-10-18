@@ -11,7 +11,6 @@ import nl.hauntedmc.craftgpt.CraftGPT;
 import nl.hauntedmc.craftgpt.generation.IntVec3;
 import nl.hauntedmc.craftgpt.generation.compiled.SparseCuboid;
 import nl.hauntedmc.craftgpt.util.PluginConfig;
-import org.bukkit.Bukkit;
 import org.bukkit.World;
 import org.bukkit.entity.Player;
 import org.bukkit.scheduler.BukkitRunnable;
@@ -23,14 +22,6 @@ import java.util.function.Consumer;
 public final class WorldEditBuildApplicationService {
     public BukkitTask apply(Player player, World world, IntVec3 selectionMinWorld, List<SparseCuboid> cuboids,
                             PluginConfig config, Runnable onSuccess, Consumer<String> onFailure) {
-        if (config.getBuildDelayTicks() <= 0) {
-            return Bukkit.getScheduler().runTask(CraftGPT.getInstance(), () -> {
-                if (applyBatch(world, selectionMinWorld, cuboids, 0, cuboids.size(), onFailure)) {
-                    onSuccess.run();
-                }
-            });
-        }
-
         return new BukkitRunnable() {
             private int index;
 
@@ -52,7 +43,7 @@ public final class WorldEditBuildApplicationService {
                     onSuccess.run();
                 }
             }
-        }.runTaskTimer(CraftGPT.getInstance(), 0L, config.getBuildDelayTicks());
+        }.runTaskTimer(CraftGPT.getInstance(), 0L, Math.max(1L, config.getBuildDelayTicks()));
     }
 
     private boolean applyBatch(World world, IntVec3 selectionMinWorld, List<SparseCuboid> cuboids, int start, int end,

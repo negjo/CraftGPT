@@ -61,4 +61,20 @@ class MessageBundleTest {
 
         assertEquals("Missing message: missing.key", PLAIN.serialize(bundle.render("missing.key", "")));
     }
+    @Test
+    void progressMessagesUseDefaultsWithoutReplacingCustomMessages() throws Exception {
+        var custom = new YamlConfiguration();
+        custom.options().pathSeparator('/');
+        custom.loadFromString("messages:\n  done.done: 'Custom done message'\n");
+        var defaults = new YamlConfiguration();
+        defaults.options().pathSeparator('/');
+        try (var stream = getClass().getResourceAsStream("/messages.yml")) {
+            org.junit.jupiter.api.Assertions.assertNotNull(stream);
+            defaults.load(new java.io.InputStreamReader(stream, java.nio.charset.StandardCharsets.UTF_8));
+        }
+        custom.setDefaults(defaults);
+        var messages = new MessageBundle(custom);
+        assertEquals("Generating geometry...", PLAIN.serialize(messages.render("info.progress", "Generating geometry...")));
+        assertEquals("Custom done message", PLAIN.serialize(messages.render("done.done", "")));
+    }
 }

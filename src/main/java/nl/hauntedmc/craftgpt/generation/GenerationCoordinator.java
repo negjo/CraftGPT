@@ -126,12 +126,41 @@ public final class GenerationCoordinator implements Listener {
                 config.isVisualReviewRepairEnabled(),
                 config.getLogExcerptMaxLength(),
                 promptVariables
-        );
-
-        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
-            PipelineResult result = compiledPipeline.generate(request);
-            Bukkit.getScheduler().runTask(plugin, () -> handlePipelineResult(player, activeGeneration, result));
+        ).withProgress(message -> {
+            if (activeGeneration.cancelled.get()) throw new java.util.concurrent.CancellationException();
+            reportProgress(player, activeGeneration, message);
         });
+
+        reportProgress(player,activeGeneration,"Scanning existing terrain inside the selection...");
+        try {
+            activeGeneration.captureTask = nl.hauntedmc.craftgpt.generation.terrain.TerrainCapture.capture(
+                    plugin,activeGeneration.buildWorld,selectionMinWorld,buildVolume,
+                    () -> activeGeneration.cancelled.get() || !player.isOnline(),
+                    snapshot -> {
+                        reportProgress(player,activeGeneration,"Terrain captured: " + snapshot.blockCount() + " existing non-air blocks.");
+                        PipelineRequest terrainRequest = request.withTerrain(snapshot);
+                        activeGeneration.worker = new java.util.concurrent.FutureTask<Void>(() -> {
+                            PipelineResult result;
+                            try { result = compiledPipeline.generate(terrainRequest); }
+                            catch (java.util.concurrent.CancellationException e) { return null; }
+                            catch (RuntimeException e) {
+                                plugin.getLogger().log(java.util.logging.Level.SEVERE,"Generation failed",e);
+                                result = PipelineResult.failure("generation_failed","Generation failed unexpectedly; see the server console.","","");
+                            }
+                            PipelineResult completed = result;
+                            if (plugin.isEnabled() && !activeGeneration.cancelled.get()) Bukkit.getScheduler().runTask(plugin, () -> handlePipelineResult(player,activeGeneration,completed));
+                            return null;
+                        });
+                        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+                            try { activeGeneration.worker.run(); }
+                            finally { Thread.interrupted(); }
+                        });
+                    },
+                    error -> handlePipelineResult(player,activeGeneration,PipelineResult.failure("terrain_scan_failed",error,"",""))
+            );
+        } catch (IllegalArgumentException e) {
+            handlePipelineResult(player,activeGeneration,PipelineResult.failure("terrain_scan_failed",e.getMessage(),"",""));
+        }
         return true;
     }
 
@@ -148,7 +177,7 @@ public final class GenerationCoordinator implements Listener {
     private void handlePipelineResult(Player player, ActiveGeneration activeGeneration, PipelineResult result) {
         ActiveGeneration current = activeGenerations.get(player.getUniqueId());
         if (current != activeGeneration || activeGeneration.cancelled.get() || !player.isOnline()) {
-            cleanup(player.getUniqueId(), false);
+            if (current == activeGeneration) cancelGeneration(player.getUniqueId());
             return;
         }
 
@@ -188,12 +217,20 @@ public final class GenerationCoordinator implements Listener {
         );
     }
 
+    public boolean stopGeneration(UUID playerId) {
+        if (!activeGenerations.containsKey(playerId)) return false;
+        cancelGeneration(playerId);
+        return true;
+    }
+
     private void cancelGeneration(UUID playerId) {
         ActiveGeneration activeGeneration = activeGenerations.remove(playerId);
         if (activeGeneration == null) {
             return;
         }
         activeGeneration.cancelled.set(true);
+        if (activeGeneration.worker != null) activeGeneration.worker.cancel(true);
+        if (activeGeneration.captureTask != null) activeGeneration.captureTask.cancel();
         if (activeGeneration.waitingTask != null) {
             activeGeneration.waitingTask.cancel();
         }
@@ -215,6 +252,7 @@ public final class GenerationCoordinator implements Listener {
         if (activeGeneration == null) {
             return;
         }
+        if (activeGeneration.captureTask != null) activeGeneration.captureTask.cancel();
         if (activeGeneration.waitingTask != null) {
             activeGeneration.waitingTask.cancel();
         }
@@ -228,6 +266,14 @@ public final class GenerationCoordinator implements Listener {
         }
     }
 
+    private void reportProgress(Player player, ActiveGeneration generation, String message) {
+        if (!plugin.isEnabled()) return;
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            if (activeGenerations.get(player.getUniqueId()) != generation || generation.cancelled.get() || !player.isOnline()) return;
+            generation.progress.update(message);
+            Feedback.sendFeedback(player, "info.progress", message);
+        });
+    }
     private BukkitTask runActionBarTask(Player player, String feedbackKey) {
         return new BukkitRunnable() {
             private int dots;
@@ -239,7 +285,14 @@ public final class GenerationCoordinator implements Listener {
                     return;
                 }
                 dots = (dots + 1) % 4;
-                Feedback.sendActionBarFeedback(player, feedbackKey, ".".repeat(dots));
+                ActiveGeneration generation = activeGenerations.get(player.getUniqueId());
+                if (generation != null && "wait.generating.actionbar".equals(feedbackKey)) {
+                    Feedback.sendActionBarFeedback(player, "info.progress", generation.progress.stage() + " " + ".".repeat(dots));
+                    String reminder = generation.progress.reminder();
+                    if (reminder != null) Feedback.sendFeedback(player, "info.progress", reminder);
+                } else {
+                    Feedback.sendActionBarFeedback(player, feedbackKey, ".".repeat(dots));
+                }
             }
         }.runTaskTimer(plugin, 0L, plugin.getPluginConfig().getActionBarUpdateTicks());
     }
@@ -274,6 +327,9 @@ public final class GenerationCoordinator implements Listener {
         private final World buildWorld;
         private final FancySelectionBox selectionBox;
         private final AtomicBoolean cancelled = new AtomicBoolean(false);
+        private final ProgressTracker progress = new ProgressTracker();
+        private java.util.concurrent.FutureTask<Void> worker;
+        private BukkitTask captureTask;
         private BukkitTask waitingTask;
         private BukkitTask actionBarTask;
         private BukkitTask buildTask;
