@@ -22,6 +22,7 @@ class CodexAppServerSession {
     this.closed = false;
 
     this.proc = spawn(CODEX_BIN, ["app-server"], {
+      windowsHide: true,
       stdio: ["pipe", "pipe", "pipe"],
     });
 
