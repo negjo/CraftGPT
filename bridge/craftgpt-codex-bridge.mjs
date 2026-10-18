@@ -1,4 +1,5 @@
 import http from 'node:http';
+import {checkSchema,validateOutput,structuredTurnInput} from './schema-validation.mjs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
@@ -45,7 +46,12 @@ export async function generate(body, signal) {
   const effort = body.reasoning?.effort || 'high';
   const schema = body.text?.format?.schema;
   if (body.text?.format?.type !== 'json_schema' || !schema) throw new BridgeError(400, 'CraftGPT must supply text.format.json_schema');
-  const imageDir = path.join(TEMP_ROOT, randomUUID());
+  try { checkSchema(schema); } catch (e) { throw new BridgeError(400, 'Unsupported output schema: '+e.message); }
+  const requestId=randomUUID();
+  const startedAt=Date.now();
+  let usage=null;
+  const diagnostic=()=>({requestId,schema:body.text.format.name||'unnamed',model:requestedModel,effort,elapsedMs:Date.now()-startedAt,usage});
+  const imageDir = path.join(TEMP_ROOT, requestId);
   const session = new CodexAppServerSession();
   activeRequests++;
   const abort = () => session.close();
@@ -53,6 +59,8 @@ export async function generate(body, signal) {
   try {
     if (signal?.aborted) throw new BridgeError(499, 'Request cancelled');
     const input = await convertInput(body.input, imageDir);
+    console.log(JSON.stringify({event:'request_started',...diagnostic(),images:input.filter(x=>x.type==='localImage').length,
+      textCharacters:input.reduce((n,x)=>n+(x.text?.length||0),0),schemaBytes:Buffer.byteLength(JSON.stringify(schema))}));
     await session.initialize();
     const account = await readAccount(session);
     if (account?.requiresOpenaiAuth && !account.account) throw new BridgeError(401, 'Codex login required; run codex login');
@@ -75,6 +83,11 @@ export async function generate(body, signal) {
     const listener = msg => {
       if (msg.method === 'bridge/error') { rejectTurn(new BridgeError(502, msg.params?.error || 'Codex disconnected')); return; }
       if (msg.params?.threadId !== threadId) return;
+      if (msg.method === 'thread/tokenUsage/updated') {
+        const reported=msg.params.tokenUsage?.total;
+        if (reported) usage=Object.fromEntries(['inputTokens','cachedInputTokens','outputTokens','reasoningOutputTokens','totalTokens']
+          .filter(key=>Number.isFinite(reported[key])).map(key=>[key,reported[key]]));
+      }
       if (msg.method === 'item/completed' && msg.params.item?.type === 'agentMessage') {
         const item=msg.params.item;
         messages.set(item.id, item.text);
@@ -86,13 +99,16 @@ export async function generate(body, signal) {
     let turn;
     try {
       const result = await session.request('turn/start', {
-        threadId, input, model:modelName, effort, approvalPolicy:'never', outputSchema:schema,
+        threadId, ...structuredTurnInput(input,schema), model:modelName, effort, approvalPolicy:'never',
       });
       turn = result.turn?.status === 'completed' ? result.turn : await finished;
     } finally { clearTimeout(timer); session.events.off('notification', listener); }
     if (turn.status !== 'completed') throw new BridgeError(502, turn.error?.message || `Codex turn ${turn.status}`);
     const text = extractAgentText(turn, messages).trim();
-    try { JSON.parse(text); } catch { throw new BridgeError(502, 'Codex returned invalid JSON'); }
+    let parsed;
+    try { parsed=JSON.parse(text); } catch { throw new BridgeError(502, 'Codex returned invalid JSON'); }
+    try { validateOutput(parsed,schema); } catch (e) { throw new BridgeError(502,'Codex JSON failed schema validation: '+e.message); }
+    console.log(JSON.stringify({event:'request_completed',...diagnostic(),responseCharacters:text.length}));
     console.log(`${new Date().toISOString()} completed schema=${body.text.format.name || 'unnamed'} model=${modelName} effort=${effort} images=${input.filter(x=>x.type==='localImage').length}`);
     return {
       id:`resp_${randomUUID()}`, object:'response', created_at:Math.floor(Date.now()/1000),
@@ -100,6 +116,9 @@ export async function generate(body, signal) {
       output:[{id:`msg_${randomUUID()}`,type:'message',role:'assistant',status:'completed',
         content:[{type:'output_text',text,annotations:[]}]}], output_text:text,
     };
+  } catch (error) {
+    console.error(JSON.stringify({event:'request_failed',...diagnostic(),message:error.message}));
+    throw error;
   } finally {
     activeRequests--;
     signal?.removeEventListener('abort', abort);
@@ -128,7 +147,7 @@ export function createBridge() {
       res.end(JSON.stringify(body));
     };
     try {
-      if (req.method==='GET' && req.url==='/health') return reply(200,{ok:true,service:'craftgpt-codex-bridge',model:MODEL,effort:'high',activeRequests});
+      if (req.method==='GET' && req.url==='/health') return reply(200,{ok:true,service:'craftgpt-codex-bridge',model:MODEL,effort:'high',activeRequests,imageStructuredOutput:'prompt-validated'});
       if (req.method!=='POST' || req.url!=='/v1/responses') return reply(404,{error:{message:'Use POST /v1/responses or GET /health'}});
       const controller=new AbortController();
       res.on('close',()=> { if (!res.writableEnded) controller.abort(); });
