@@ -1,6 +1,7 @@
 package nl.hauntedmc.craftgpt;
 
 import nl.hauntedmc.craftgpt.cmd.CraftGPTCommand;
+import nl.hauntedmc.craftgpt.admin.AdminCoordinator;
 import nl.hauntedmc.craftgpt.generation.GenerationCoordinator;
 import nl.hauntedmc.craftgpt.util.MessageBundle;
 import nl.hauntedmc.craftgpt.util.PluginConfig;
@@ -16,6 +17,7 @@ public final class CraftGPT extends JavaPlugin {
     private PluginConfig pluginConfig;
     private MessageBundle messageBundle;
     private GenerationCoordinator generationCoordinator;
+    private AdminCoordinator adminCoordinator;
 
     @Override
     public void onEnable() {
@@ -26,18 +28,25 @@ public final class CraftGPT extends JavaPlugin {
         pluginConfig = PluginConfig.load(getConfig());
         generationCoordinator = new GenerationCoordinator(this);
         getServer().getPluginManager().registerEvents(generationCoordinator, this);
+        if (getConfig().getBoolean("admin.enabled", true)) {
+            try {
+                adminCoordinator = new AdminCoordinator(this);
+                getServer().getPluginManager().registerEvents(adminCoordinator, this);
+            } catch (IOException e) { getLogger().warning("Admin mode unavailable: " + e.getMessage()); }
+        }
         registerCommands();
     }
 
     @Override
     public void onDisable() {
+        if (adminCoordinator != null) adminCoordinator.shutdown();
         if (generationCoordinator != null) {
             generationCoordinator.shutdown();
         }
     }
 
     private void registerCommands() {
-        CraftGPTCommand commandExecutor = new CraftGPTCommand(generationCoordinator);
+        CraftGPTCommand commandExecutor = new CraftGPTCommand(generationCoordinator, adminCoordinator);
         PluginCommand command = getCommand("craftgpt");
         if (command == null) {
             throw new IllegalStateException("Required commands are missing from plugin.yml.");

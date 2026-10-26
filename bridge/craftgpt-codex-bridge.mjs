@@ -1,4 +1,5 @@
 import http from 'node:http';
+import {AdminJobManager} from './admin-agent.mjs';
 import {checkSchema,validateOutput,structuredTurnInput} from './schema-validation.mjs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -139,15 +140,25 @@ async function readBody(req) {
   catch { throw new BridgeError(400,'Invalid JSON request'); }
 }
 
-export function createBridge() {
-  return http.createServer(async (req,res) => {
+export function createBridge({adminManager=new AdminJobManager()}={}) {
+  const server=http.createServer(async (req,res) => {
     const reply = (status,body) => {
       if (res.destroyed) return;
       res.writeHead(status,{'Content-Type':'application/json'});
       res.end(JSON.stringify(body));
     };
     try {
-      if (req.method==='GET' && req.url==='/health') return reply(200,{ok:true,service:'craftgpt-codex-bridge',model:MODEL,effort:'high',activeRequests,imageStructuredOutput:'prompt-validated'});
+      if (req.method==='GET' && req.url==='/health') return reply(200,{ok:true,service:'craftgpt-codex-bridge',model:MODEL,effort:'high',activeRequests,adminSupported:true,imageStructuredOutput:'prompt-validated'});
+      if(req.url.startsWith('/admin/')) {
+        const root=await adminManager.authorize(req.headers.authorization);
+        if(req.method==='POST' && req.url==='/admin/jobs')return reply(202,adminManager.start(await readBody(req),root));
+        const match=/^\/admin\/jobs\/([a-f0-9-]{36})(?:\/tools\/([a-f0-9-]{36}))?$/.exec(req.url);
+        if(!match)return reply(404,{error:{message:'Unknown admin endpoint.'}});
+        if(req.method==='GET' && !match[2])return reply(200,adminManager.status(match[1]));
+        if(req.method==='DELETE' && !match[2])return reply(200,adminManager.cancel(match[1]));
+        if(req.method==='POST' && match[2])return reply(200,adminManager.result(match[1],match[2],await readBody(req)));
+        return reply(405,{error:{message:'Unsupported admin method.'}});
+      }
       if (req.method!=='POST' || req.url!=='/v1/responses') return reply(404,{error:{message:'Use POST /v1/responses or GET /health'}});
       const controller=new AbortController();
       res.on('close',()=> { if (!res.writableEnded) controller.abort(); });
@@ -157,6 +168,8 @@ export function createBridge() {
       reply(error.status || 502,{error:{message:error.message,type:'bridge_error'}});
     }
   });
+  server.on('close',()=>adminManager.close());
+  return server;
 }
 
 if (process.argv[1] && path.resolve(process.argv[1])===fileURLToPath(import.meta.url)) {

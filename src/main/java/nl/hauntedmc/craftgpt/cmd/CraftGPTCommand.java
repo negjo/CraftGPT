@@ -1,6 +1,7 @@
 package nl.hauntedmc.craftgpt.cmd;
 
 import nl.hauntedmc.craftgpt.CraftGPT;
+import nl.hauntedmc.craftgpt.admin.AdminCoordinator;
 import nl.hauntedmc.craftgpt.Feedback;
 import nl.hauntedmc.craftgpt.generation.GenerationCoordinator;
 import nl.hauntedmc.craftgpt.generation.IntVec3;
@@ -32,9 +33,15 @@ public final class CraftGPTCommand implements CommandExecutor, TabCompleter {
     private static final PlainTextComponentSerializer PLAIN_TEXT_SERIALIZER = PlainTextComponentSerializer.plainText();
 
     private final GenerationCoordinator generationCoordinator;
+    private final AdminCoordinator adminCoordinator;
 
     public CraftGPTCommand(GenerationCoordinator generationCoordinator) {
+        this(generationCoordinator, null);
+    }
+
+    public CraftGPTCommand(GenerationCoordinator generationCoordinator, AdminCoordinator adminCoordinator) {
         this.generationCoordinator = generationCoordinator;
+        this.adminCoordinator = adminCoordinator;
     }
 
     @Override
@@ -49,6 +56,7 @@ public final class CraftGPTCommand implements CommandExecutor, TabCompleter {
             case GENERATE_SUBCOMMAND -> handleGenerate(sender, args);
             case RELOAD_SUBCOMMAND -> handleReload(sender);
             case STOP_SUBCOMMAND -> handleStop(sender);
+            case "admin" -> handleAdmin(sender, args);
             default -> {
                 sendUsage(sender);
                 yield true;
@@ -60,9 +68,9 @@ public final class CraftGPTCommand implements CommandExecutor, TabCompleter {
     public @Nullable List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command,
                                                 @NotNull String alias, @NotNull String[] args) {
         if (args.length == 1) {
-            return filterByPrefix(List.of(GENERATE_SUBCOMMAND, RELOAD_SUBCOMMAND, STOP_SUBCOMMAND), args[0]);
+            return filterByPrefix(List.of(GENERATE_SUBCOMMAND, RELOAD_SUBCOMMAND, STOP_SUBCOMMAND, "admin"), args[0]);
         }
-        if (args.length == 2 && GENERATE_SUBCOMMAND.equalsIgnoreCase(args[0])) {
+        if (args.length == 2 && (GENERATE_SUBCOMMAND.equalsIgnoreCase(args[0]) || "admin".equalsIgnoreCase(args[0]))) {
             return filterByPrefix(ConfigManager.getModelList(), args[1]);
         }
         if (args.length >= 3 && GENERATE_SUBCOMMAND.equalsIgnoreCase(args[0])) {
@@ -122,19 +130,36 @@ public final class CraftGPTCommand implements CommandExecutor, TabCompleter {
         );
     }
 
+    private boolean handleAdmin(CommandSender sender, String[] args) {
+        if (!sender.hasPermission("craftgpt.admin")) {
+            Feedback.sendFeedback(sender,"error.permission.admin");
+            return true;
+        }
+        if (adminCoordinator == null) {
+            Feedback.sendFeedback(sender,"error.admin","Admin mode is disabled or unavailable; check the server console.");
+            return true;
+        }
+        if (args.length < 3) {
+            Feedback.sendFeedback(sender,"info.usage.admin");
+            return true;
+        }
+        return adminCoordinator.start(sender,args[1],String.join(" ",java.util.Arrays.copyOfRange(args,2,args.length)));
+    }
+
     private boolean handleStop(CommandSender sender) {
-        if (!(sender instanceof Player player)) {
-            Feedback.sendFeedback(sender, "error.not_a_player");
+        if (!sender.hasPermission("craftgpt.use") && !sender.hasPermission("craftgpt.admin")) {
+            Feedback.sendFeedback(sender,"error.permission.use");
             return true;
         }
-        if (!sender.hasPermission("craftgpt.use")) {
-            Feedback.sendFeedback(sender, "error.permission.use");
-            return true;
-        }
-        Feedback.sendFeedback(player, generationCoordinator.stopGeneration(player.getUniqueId())
-                ? "done.stopped" : "info.nothing_to_stop");
+        boolean adminStopped = adminCoordinator != null && sender.hasPermission("craftgpt.admin") && adminCoordinator.stop(sender);
+        boolean stopped = false;
+        if (sender instanceof Player player && sender.hasPermission("craftgpt.use")) stopped |= generationCoordinator.stopGeneration(player.getUniqueId());
+        if (adminStopped) Feedback.sendFeedback(sender,"done.admin_stopped");
+        if (stopped) Feedback.sendFeedback(sender,"done.stopped");
+        if (!adminStopped && !stopped) Feedback.sendFeedback(sender,"info.nothing_to_stop");
         return true;
     }
+
     private boolean handleReload(CommandSender sender) {
         if (!sender.hasPermission("craftgpt.reload")) {
             Feedback.sendFeedback(sender, "error.permission.reload");
@@ -186,6 +211,7 @@ public final class CraftGPTCommand implements CommandExecutor, TabCompleter {
         Feedback.sendFeedback(sender, "info.usage.generate");
         Feedback.sendFeedback(sender, "info.usage.reload");
         Feedback.sendFeedback(sender, "info.usage.stop");
+        if (sender.hasPermission("craftgpt.admin")) Feedback.sendFeedback(sender, "info.usage.admin");
     }
 
     private List<String> filterByPrefix(List<String> values, String current) {

@@ -17,3 +17,7 @@ permissions:
   craftgpt.reload:
     description: Allows you to reload the CraftGPT configuration
     default: op
+
+  craftgpt.admin:
+    description: Allows AI-assisted server console commands and scoped configuration edits
+    default: op

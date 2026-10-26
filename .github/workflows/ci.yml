@@ -148,3 +148,4 @@ jobs:
         with:
           persist-credentials: false
       - run: node bridge/test-bridge.mjs
+      - run: node bridge/test-admin.mjs

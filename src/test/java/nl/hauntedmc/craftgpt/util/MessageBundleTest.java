@@ -77,4 +77,44 @@ class MessageBundleTest {
         assertEquals("Generating geometry...", PLAIN.serialize(messages.render("info.progress", "Generating geometry...")));
         assertEquals("Custom done message", PLAIN.serialize(messages.render("done.done", "")));
     }
-}
+    @Test
+    void adminCommandFeedbackPreservesFullCommandAndLiteralFormattingCharacters() throws Exception {
+        var defaults = new YamlConfiguration();
+        defaults.options().pathSeparator('/');
+        try (var stream = getClass().getResourceAsStream("/messages.yml")) {
+            org.junit.jupiter.api.Assertions.assertNotNull(stream);
+            defaults.load(new java.io.InputStreamReader(stream, java.nio.charset.StandardCharsets.UTF_8));
+        }
+        var bundle = new MessageBundle(defaults);
+        String command = "/minecraft:give negjo minecraft:netherite_axe[item_name='<red>Axe</red>',lore=['"
+                + "detailed ".repeat(100) + "']]";
+        Component rendered = bundle.render("info.admin.command", command);
+        assertEquals("Running command: " + command, PLAIN.serialize(rendered));
+        org.junit.jupiter.api.Assertions.assertTrue(LEGACY.serialize(rendered).contains("<red>Axe</red>"));
+        assertEquals(TextColor.color(0xf59e0b), rendered.children().get(0).color());
+    }
+
+    @Test
+    void adminMessagesHaveDistinctStatusColorsAndWorkWithExistingCustomizations() throws Exception {
+        var config = new YamlConfiguration();
+        config.options().pathSeparator('/');
+        config.loadFromString("prefix: '<blue>Custom</blue> '\nmessages:\n  done.done: 'Custom build done'\n");
+        var defaults = new YamlConfiguration();
+        defaults.options().pathSeparator('/');
+        try (var stream = getClass().getResourceAsStream("/messages.yml")) {
+            org.junit.jupiter.api.Assertions.assertNotNull(stream);
+            defaults.load(new java.io.InputStreamReader(stream, java.nio.charset.StandardCharsets.UTF_8));
+        }
+        config.setDefaults(defaults);
+        var bundle = new MessageBundle(config);
+        assertEquals("Custom ", PLAIN.serialize(bundle.prefix()));
+        assertEquals("Custom build done", PLAIN.serialize(bundle.render("done.done", "")));
+        for (String key : new String[]{"info.admin.started", "info.admin.working", "info.admin.tool",
+                "info.admin.command", "info.admin.result", "done.admin", "error.admin", "warning.admin"}) {
+            String rendered = PLAIN.serialize(bundle.render(key, "details <red>literal</red>"));
+            org.junit.jupiter.api.Assertions.assertFalse(rendered.contains("Missing message"), key);
+            org.junit.jupiter.api.Assertions.assertFalse(rendered.contains("<param>"), key);
+        }
+        assertEquals(TextColor.color(0xef4444), bundle.render("error.admin", "Failure").color());
+        assertEquals(TextColor.color(0x22c55e), bundle.render("done.admin", "").color());
+    }}

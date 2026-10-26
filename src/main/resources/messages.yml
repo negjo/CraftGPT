@@ -40,5 +40,19 @@ messages:
   "done.reload": "<color:#22c55e>CraftGPT configuration reloaded.</color>"
 
   "info.usage.stop": "<color:#94a3b8>/craftgpt stop - Stop your current build.</color>"
-  "done.stopped": "<color:#94a3b8>Build stopped. Blocks already placed remain.</color>"
-  "info.nothing_to_stop": "<color:#94a3b8>You have no active build to stop.</color>"
+  "done.stopped": "<color:#94a3b8>Task stopped. Changes already applied remain.</color>"
+  "info.nothing_to_stop": "<color:#94a3b8>You have no active CraftGPT task to stop.</color>"
+
+  "error.permission.admin": "<color:#ef4444>You need craftgpt.admin permission.</color>"
+  "info.usage.admin": "<color:#94a3b8>/craftgpt admin MODEL INSTRUCTION - Administer server configuration and console commands.</color>"
+
+  "done.admin_stopped": "<color:#94a3b8>Admin task stopped. Changes already applied remain.</color>"
+
+  "info.admin.started": "<color:#38bdf8><bold>Admin task started.</bold></color> <color:#94a3b8>Use /craftgpt stop to cancel. Changes already applied will remain.</color>"
+  "info.admin.working": "<color:#f59e0b>Admin task is still working...</color>"
+  "info.admin.tool": "<color:#94a3b8><param></color>"
+  "info.admin.command": "<color:#f59e0b>Running command:</color> <color:#f8fafc><param></color>"
+  "info.admin.result": "<color:#f8fafc><param></color>"
+  "done.admin": "<color:#22c55e><bold>Admin task completed.</bold></color>"
+  "error.admin": "<color:#ef4444><param></color>"
+  "warning.admin": "<color:#f59e0b><param></color>"

@@ -1,1 +1,1 @@
-{"name":"craftgpt-codex-bridge","private":true,"type":"module","scripts":{"start":"node craftgpt-codex-bridge.mjs","test":"node test-bridge.mjs"},"engines":{"node":">=18"}}
+{"name":"craftgpt-codex-bridge","private":true,"type":"module","scripts":{"start":"node craftgpt-codex-bridge.mjs","test":"node test-bridge.mjs && node test-admin.mjs"},"engines":{"node":">=18"}}

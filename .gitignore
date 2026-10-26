@@ -40,3 +40,6 @@ java_dump.txt
 # Local bridge state and test artifacts
 bridge/.images/
 diagnostics/
+
+# Local administrative bridge credential
+**/admin-bridge.key

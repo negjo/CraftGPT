@@ -13,7 +13,7 @@ class BridgeError extends Error {
 }
 
 class CodexAppServerSession {
-  constructor() {
+  constructor(options = {}) {
     this.nextId = 1;
     this.pending = new Map();
     this.events = new EventEmitter();
@@ -21,7 +21,7 @@ class CodexAppServerSession {
     this.stderr = "";
     this.closed = false;
 
-    this.proc = spawn(CODEX_BIN, ["app-server"], {
+    this.proc = spawn(CODEX_BIN, [...(options.args || []), "app-server"], {
       windowsHide: true,
       stdio: ["pipe", "pipe", "pipe"],
     });
@@ -135,7 +135,7 @@ class CodexAppServerSession {
       return;
     }
 
-    Promise.resolve(handler(params))
+    Promise.resolve().then(() => handler(params))
       .then((result) => {
         this.send({ id: msg.id, result });
       })
@@ -170,6 +170,7 @@ class CodexAppServerSession {
   }
 
   send(message) {
+    if (this.closed || this.proc.stdin.destroyed) return;
     this.proc.stdin.write(`${JSON.stringify(message)}\n`);
   }
 

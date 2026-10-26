@@ -52,3 +52,5 @@ The bridge now passes native `outputSchema` for text-only requests. For image re
 Request logs now record a request ID, stage/schema, requested model/effort, image count, elapsed time, input text/schema sizes, and reported input/output/reasoning usage where available. They do not log prompt text, images, or credentials. Usage can remain unavailable on early errors. `/health` exposes `imageStructuredOutput: prompt-validated` when this version is loaded.
 
 On the local server, bridge scripts are separate from the plugin JAR. Fully exit using the server console's `stop`, then launch the normal batch file to reload bridge changes. Ctrl+C restarts only Java and can retain the old bridge. Rebuilding the plugin is unnecessary for this bridge-only change.
+
+Administrative tool sessions are documented in [docs/admin-mode.md](../docs/admin-mode.md). /craftgpt admin <codex preset> <instruction> uses authenticated job endpoints and plugin-hosted file/console tools; it does not relax generation request permissions.

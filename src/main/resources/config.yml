@@ -280,3 +280,13 @@ models:
           verbosity: "low"
       - reasoning:
           effort: "low"
+
+# Administrative agents use server-scoped tools and the local Codex bridge.
+# Only operators or players explicitly granted craftgpt.admin can start them.
+admin:
+  enabled: true
+  bridge_url: http://127.0.0.1:8766
+  timeout_seconds: 900
+  max_tool_calls: 40
+  # All registered console commands and aliases are available to admin tasks.
+  # Legacy allowed_console_commands settings are ignored.
